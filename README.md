@@ -1,206 +1,81 @@
+
 # Git Repos Manager
 
-A powerful terminal-based Git repository browser and launcher with favorites management and lazygit integration.
+**Git Repos Manager** is a terminal-based tool for quickly browsing, launching, and managing all your Git repositories from a single, interactive interface.
 
 ## Features
 
-- 🔍 **Automatic Discovery** - Scans and lists all Git repositories in your configured directory
-- ⭐ **Favorites System** - Mark frequently used repositories for quick access
-- 📊 **Rich Information Display** - Shows branch name, last activity, and remote tracking status
-- 🎨 **Color-Coded Branches** - Visual distinction for main, develop, feature, bugfix, hotfix, and release branches
-- 🚀 **Lazy Git Integration** - Opens selected repositories directly in lazy git
-- 🔎 **Search Functionality** - Quickly filter repositories by name
-- ⚡ **Parallel Scanning** - Fast repository detection using concurrent processing
+- **Automatic Repository Discovery**: Instantly scans and lists all Git repositories under your chosen directory (supports two levels deep).
+- **Favorites System**: Mark frequently used repositories as favorites for quick access. Favorites always appear at the top of the list.
+- **Rich Repository Information**: See branch name, last activity time, and remote tracking status for every repository at a glance.
+- **Color-Coded Branches**: Branch names are color-coded by type (main, develop, feature, bugfix, hotfix, release, and more) for instant recognition.
+- **Remote Status Indicators**: Visual symbols show if your branch is ahead, behind, or diverged from the remote.
+- **Fast Search & Filtering**: Instantly filter repositories by typing part of their name.
+- **Keyboard-Driven Navigation**: Navigate, select, and manage repositories entirely from the keyboard (arrow keys, Enter, Esc, etc.).
+- **Integrated Tool Launching**: Open any repository directly in lazygit, your terminal, or file explorer with a single keystroke.
+- **Parallel Scanning**: Repository discovery is fast, even with hundreds of repos, thanks to parallel processing.
+- **Cross-Platform**: Works on Windows, macOS, and Linux.
+
+## Getting Started
+
 
 ## Prerequisites
 
 - [.NET 10 SDK or later](https://dotnet.microsoft.com/download)
-- [lazygit](https://github.com/jesseduffield/lazygit) - Git terminal UI
 
 ## Installation
 
-### 1. Install Dependencies
-
-**lazygit:**
-```powershell
-# Windows (winget)
-winget install jesseduffield.lazygit
-
-# Windows (Scoop)
-scoop install lazygit
-
-# Windows (Chocolatey)
-choco install lazygit
-
-# macOS
-brew install lazygit
-
-# Linux
-# See https://github.com/jesseduffield/lazygit#installation
-```
-
-### 2. Configure Environment Variable
-
-Set the `GIT_REPOS_PATH` environment variable to point to your Git repositories root directory:
-
-**Windows (PowerShell):**
-```powershell
-[System.Environment]::SetEnvironmentVariable('GIT_REPOS_PATH', 'C:\Dev\Projects', 'User')
-```
-
-**macOS/Linux:**
-```bash
-export GIT_REPOS_PATH="$HOME/projects"
-# Add to ~/.bashrc or ~/.zshrc for persistence
-```
-
-### 3. Run the Script
-
-```powershell
-# Run directly with .NET 10+
-dotnet run repos.cs
-
-# Or with VS Code C# extension
-# Open repos.cs and press F5
-```
+1. Set the `GIT_REPOS_PATH` environment variable to your repositories root folder
+3. Run the app:
+   - `dotnet run` from `src/DevTools/`
+   - Or open in VS Code and press F5
 
 ## Usage
 
-### Main Menu
+1. Browse repositories: The main menu lists all detected repositories, sorted by favorites and recent activity.
+2. Search/filter: Start typing to filter the list by name.
+3. Select a repository: Use arrow keys and press Enter to open in lazygit. Press **Ctrl+Enter** or **Shift+Enter** to open a menu and select a program (e.g., terminal, explorer, Copilot CLI) to use on the repository.
+4. Manage favorites: Press `F` to toggle favorite status for any repository.
+5. Settings: Optionally skip the main menu on startup.
 
-When you launch the application, you'll see three options:
+### Keyboard Shortcuts
 
-1. **Choose a repository** - Browse and open a repository
-2. **Manage favorites** - Manage your favorite repositories
-3. **Settings** - Configure application settings
+- **↑/↓**: Navigate repositories
+- **Enter**: Open selected repository in lazygit
+- **F**: Toggle favorite
+- **Esc**: Go back
+- **Q** or **Ctrl+C**: Exit
+- **Ctrl+Enter** or **Shift+Enter**: Open the program selection menu for the selected repository
 
-### Repository List
+### Repository List Indicators
 
-The repository list displays the following information for each repo:
-
-```
-⭐  my-project              2h ago          ✓          main
-    another-repo           1d ago          ↑3         feature/new-feature
-    old-project            11/15/2023      ↓2         develop
-```
-
-- **⭐** - Favorite indicator
-- **Time** - Last activity (seconds/minutes/hours/days ago, or date)
+- **🔥** — Favorite
+- **Time** — Last activity (e.g., 2h ago, 1d ago, or date)
 - **Remote Status**:
-  - `✓` - Up to date with remote
-  - `↑N` - N commits ahead of remote
-  - `↓N` - N commits behind remote
-  - `↑N↓M` - Diverged from remote
-- **Branch Name** - Color-coded by type
-
-### Branch Color Scheme
-
-- **Blue** - `main` or `master`
-- **Light Sea Green** - `develop`
-- **Yellow** - `feature/*` or `feat/*`
-- **Red** - `bugfix/*` or `fix/*`
-- **Magenta** - `hotfix/*`
-- **Cyan** - `release/*`
-- **White** - Other branches
-
-### Managing Favorites
-
-1. Select **Manage favorites** from the main menu
-2. Choose a repository from the list
-3. The repository will be toggled as a favorite (⭐)
-4. Favorites appear at the top of the repository list
-5. Press `Esc` or select **← Back** to return to the main menu
-
-### Settings
-
-- **Skip main menu on startup** - Go directly to repository selection, bypassing the main menu
-
-## Project Structure
-
-The script scans two levels deep in your `GIT_REPOS_PATH`:
-
-```
-GIT_REPOS_PATH/
-├── repo1/              # Level 1: Direct repositories
-│   └── .git/
-├── repo2/
-│   └── .git/
-└── category/           # Level 2: Grouped repositories
-    ├── project-a/
-    │   └── .git/
-    └── project-b/
-        └── .git/
-```
+  - `✓` — Up to date with remote
+  - `↑N` — N commits ahead
+  - `↓N` — N commits behind
+  - `↑N↓M` — Diverged from remote
+- **Branch Color**:
+  - Blue — `main` or `master`
+  - Light Sea Green — `develop`
+  - Yellow — `feature/*` or `feat/*`
+  - Red — `bugfix/*` or `fix/*`
+  - Magenta — `hotfix/*`
+  - Cyan — `release/*`
+  - White — Other branches
 
 ## Data Storage
 
-Favorites and preferences are stored in:
-- **Windows**: `%APPDATA%\GitRepos\favorites.json`
-- **macOS**: `~/Library/Application Support/GitRepos/favorites.json`
-- **Linux**: `~/.config/GitRepos/favorites.json`
-
-### Preferences File Format
-
-```json
-{
-  "Version": 1,
-  "Favorites": [
-    {
-      "Path": "C:\\Dev\\Projects\\my-project",
-      "AddedAt": "2025-11-28T10:30:00",
-      "Alias": null,
-      "Category": null,
-      "Priority": null
-    }
-  ],
-  "SkipMainMenu": false,
-  "LastModified": "2025-11-28T10:30:00",
-  "Settings": {}
-}
-```
-
-## Keyboard Shortcuts
-
-- **↑/↓** - Navigate repositories
-- **Enter** - Select repository and launch lazygit
-- **Ctrl+C** - Exit application
-- **Type to search** - Filter repositories by name
-
-## Dependencies
-
-The script automatically downloads the following NuGet packages:
-
-- [Spectre.Console](https://spectreconsole.net/) (v0.54.0) - Terminal UI framework
-- [LibGit2Sharp](https://github.com/libgit2/libgit2sharp) (v0.31.0) - Git operations library
+Favorites and settings are stored in platform-specific app data folders as JSON. No changes are made to your repositories.
 
 ## Troubleshooting
 
-### "The environment variable GIT_REPOS_PATH is not defined"
-
-Set the `GIT_REPOS_PATH` environment variable as described in the installation section.
-
-### "The directory '...' does not exist"
-
-Ensure the path in `GIT_REPOS_PATH` exists and is accessible.
-
-### "No Git repository found"
-
-Verify that your repositories contain a `.git` directory and are located within `GIT_REPOS_PATH` or one level deeper.
-
-### lazygit not found
-
-Install lazygit and ensure it's available in your system PATH.
-
-## Contributing
-
-Contributions are welcome! Feel free to submit issues or pull requests.
-
-## License
-
-This project is provided as-is for personal and commercial use.
+- **Missing GIT_REPOS_PATH**: Set the environment variable to your repo root.
+- **lazygit not found**: Install lazygit and ensure it's in your PATH.
+- **No repositories found**: Make sure your repos have a `.git` folder and are within the specified path.
 
 ## Acknowledgments
 
 - Built with [Spectre.Console](https://spectreconsole.net/)
 - Git operations powered by [LibGit2Sharp](https://github.com/libgit2/libgit2sharp)
-- Integrates with [lazygit](https://github.com/jesseduffield/lazygit)

@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/DevTools.Components/DevTools.Components.csproj" />
+    <Project Path="src/DevTools/DevTools.csproj" />
+  </Folder>
+</Solution>

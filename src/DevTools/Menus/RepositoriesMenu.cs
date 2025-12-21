@@ -24,7 +24,7 @@ class RepositoriesMenu(
 
         while (!cancellationToken.IsCancellationRequested)
         {
-            console.ClearAndDisplayHint(Hints.Exit);
+            console.ClearAndDisplayHint(Hints.Exit!);
 
             if (previousResult == SubmitResult.Refresh)
             {
@@ -40,7 +40,7 @@ class RepositoriesMenu(
                 .SearchHighlightStyle(Styles.SearchHightlight)
                 .EnableSearch()
                 .EnableWrapArount()
-                .AddSubmitKeys(ConsoleKey.F, ConsoleKey.Q)
+                .AddSubmitKeys(ConsoleKey.F!, ConsoleKey.Q!)
                 .SetDefaultIndex(defaultIndex)
                 ;
 

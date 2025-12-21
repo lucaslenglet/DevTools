@@ -26,6 +26,12 @@
 ## Installation
 
 1. Set the `GIT_REPOS_PATH` environment variable to your repositories root folder
+2. (Recommended for correct Unicode/emoji display in Windows PowerShell) Add the following line to your PowerShell $PROFILE:
+
+  ```powershell
+  [console]::InputEncoding = [console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
+  ```
+  This ensures proper display of Unicode and emoji characters in the terminal UI.  
 3. Run the app:
    - `dotnet run` from `src/DevTools/`
    - Or open in VS Code and press F5

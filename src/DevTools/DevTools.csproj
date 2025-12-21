@@ -7,7 +7,7 @@
     <Nullable>enable</Nullable>
     <PackAsTool>true</PackAsTool>
     <UserSecretsId>repos-9b02cdce62537005d5fb051653849e687c1a9eddabfc3c11253a62ac85339bc6</UserSecretsId>
-    <PackageId>DevTools</PackageId>
+    <PackageId>lucaslgt.DevTools</PackageId>
     <Version>0.1.0</Version>
     <Authors>LENGLET Lucas</Authors>
     <Description>Terminal-based Git repository browser and launcher with favorites and lazygit integration.</Description>

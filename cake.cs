@@ -3,14 +3,14 @@
 
 var target = Argument("target", "Build");
 var configuration = Argument("configuration", "Release");
-var staging = Argument("staging", "./stg/");
+var staging = Argument("staging", "./stg");
 
 //////////////////////////////////////////////////////////////////////
 // TASKS
 //////////////////////////////////////////////////////////////////////
 
 Task("SetBuildVersion")
-    .WithCriteria(!BuildSystem.IsLocalBuild && target == "Publish")
+    .WithCriteria(!BuildSystem.IsLocalBuild && target == "PackAndPush")
     .Does(() =>
     {
         GitVersioningCloud(".", new GitVersioningCloudSettings
@@ -35,7 +35,8 @@ Task("Build")
         });
     });
 
-Task("Pack")
+Task("PackAndPush")
+    .IsDependentOn("SetBuildVersion")
     .IsDependentOn("Build")
     .Does(() =>
     {
@@ -47,24 +48,14 @@ Task("Pack")
             OutputDirectory = staging,
         });
 
-        if (BuildSystem.IsLocalBuild)
+        foreach(var nuget in GetFiles($"{staging}/*.nupkg"))
         {
-            DeleteDirectory(staging, new DeleteDirectorySettings
+            DotNetNuGetPush(nuget, new DotNetNuGetPushSettings
             {
-                Recursive = true,
+                ApiKey = EnvironmentVariable("NUGET_API_KEY"),
+                Source = EnvironmentVariable("NUGET_SOURCE_URL"),
             });
         }
-    });
-
-Task("Publish")
-    .IsDependentOn("SetBuildVersion")
-    .IsDependentOn("Build")
-    .Does(() =>
-    {
-        DotNetNuGetPush(staging, new DotNetNuGetPushSettings
-        {
-            ApiKey = EnvironmentVariable("NUGET_API_KEY"),
-        });
     });
 
 //////////////////////////////////////////////////////////////////////

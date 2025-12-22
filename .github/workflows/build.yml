@@ -4,19 +4,19 @@ on:
   pull_request:
     branches:
       - main
+    paths:
+      - src/**/*
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: '10.0.x'
-
-    - name: Build DevTools project
-      run: dotnet build src/DevTools/DevTools.csproj
+        fetch-depth: 0 # avoid shallow clone so nbgv can do its work.
+    - name: Run a Cake C# file
+      uses: cake-build/cake-action@v3
+      with:
+        file-path: cake.cs
+        target: Build

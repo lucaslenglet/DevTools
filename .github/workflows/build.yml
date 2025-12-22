@@ -6,6 +6,8 @@ on:
       - main
     paths:
       - src/**/*
+      - cake.cs
+      - DevTools.slnx
 
 jobs:
   build:

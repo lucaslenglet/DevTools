@@ -1,4 +1,4 @@
-using System.Text.Json;
+using DevTools.Helpers;
 using DevTools.Models;
 using Spectre.Console;
 
@@ -6,21 +6,15 @@ namespace DevTools.Services;
 
 class ConfigurationManager(AppContext context)
 {
-    private static JsonSerializerOptions JsonOptions { get; } = new()
-    {
-        WriteIndented = true,
-        TypeInfoResolver = new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver()
-    };
-
     private const string ExitPrompt = "[dim]Press any key to quit...[/]";
     private const string EnvGitReposPath = "GIT_REPOS_PATH";
     private const string Folder = "DevTools";
-    private const string FileName = "config.json";
+    private const string FileName = "config.yml";
 
     public static AppContext? InitializeAppContext()
     {
-        var userPreferencesFilePath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        var configFilePath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             Folder,
             FileName
         );
@@ -44,37 +38,37 @@ class ConfigurationManager(AppContext context)
             return null;
         }
 
-        var preferences = Load(userPreferencesFilePath);
+        var config = Load(configFilePath);
 
         return new AppContext
         {
             GitReposPath = gitReposPath,
-            UserPreferencesFilePath = userPreferencesFilePath,
-            UserPreferences = preferences
+            ConfigFilePath = configFilePath,
+            Config = config
         };
     }
 
     public void Save()
     {
-        var directory = Path.GetDirectoryName(context.UserPreferencesFilePath);
+        var directory = Path.GetDirectoryName(context.ConfigFilePath);
         if (directory != null && !Directory.Exists(directory))
         {
             Directory.CreateDirectory(directory);
         }
 
-        var json = JsonSerializer.Serialize(context.UserPreferences, JsonOptions);
-        File.WriteAllText(context.UserPreferencesFilePath, json);
+        var yml = SerdeHelper.Serialize(context.Config);
+        File.WriteAllText(context.ConfigFilePath, yml);
     }
 
-    private static UserPreferences Load(string filePath)
+    private static Config Load(string filePath)
     {
         if (!File.Exists(filePath))
         {
-            return new UserPreferences();
+            return new Config();
         }
 
-        var json = File.ReadAllText(filePath);
-        var prefs = JsonSerializer.Deserialize<UserPreferences>(json, JsonOptions);
+        var yml = File.ReadAllText(filePath);
+        var prefs = SerdeHelper.Deserialize<Config>(yml);
 
         if (prefs is null)
         {

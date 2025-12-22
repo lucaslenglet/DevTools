@@ -1,7 +1,7 @@
 namespace DevTools.Models;
 
 record GitRepoInfo(
-    DirectoryInfo Repo,
+    DirectoryInfo Directory,
     DateTime LastActivity,
     string Branch,
     int AheadBy,

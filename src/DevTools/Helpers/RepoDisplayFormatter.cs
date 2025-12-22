@@ -38,8 +38,8 @@ static class RepoDisplayFormatter
 
     private static string FormatDisplayName(GitRepoInfo repo) =>
         string.IsNullOrEmpty(repo.ParentFolder)
-            ? repo.Repo.Name.PadRight(60)
-            : $"[dim]{repo.ParentFolder.EscapeMarkup()}[/] > {repo.Repo.Name.EscapeMarkup()}".PadRight(68);
+            ? repo.Directory.Name.PadRight(60)
+            : $"[dim]{repo.ParentFolder.EscapeMarkup()}[/] > {repo.Directory.Name.EscapeMarkup()}".PadRight(68);
 
     private static string GetBranchColor(string branch)
     {

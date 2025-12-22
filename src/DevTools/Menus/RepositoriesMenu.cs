@@ -24,7 +24,7 @@ class RepositoriesMenu(
 
         while (!cancellationToken.IsCancellationRequested)
         {
-            console.ClearAndDisplayHint(Hints.Exit!);
+            console.ClearAndDisplayHint(Hints.Exit!, Hints.ConfigPath(appContext.ConfigFilePath)!);
 
             if (previousResult == SubmitResult.Refresh)
             {
@@ -35,7 +35,7 @@ class RepositoriesMenu(
             var menu = new MenuPrompt<GitRepoInfo>()
                 .Title($"Select a [green]repository[/] [dim]({appContext.GitReposPath})[/] :")
                 .AddChoices(repos)
-                .UseConverter(r => RepoDisplayFormatter.Format(r, now, appContext.UserPreferences.IsFavorite(r.Repo.FullName)))
+                .UseConverter(r => RepoDisplayFormatter.Format(r, now, appContext.Config.IsFavorite(r.Directory.FullName)))
                 .HighlightStyle(Styles.Hightlight)
                 .SearchHighlightStyle(Styles.SearchHightlight)
                 .EnableSearch()
@@ -57,7 +57,7 @@ class RepositoriesMenu(
     private List<GitRepoInfo> FetchRepos()
     {
         return repositoryScanner.Scan()
-            .OrderByDescending(r => appContext.UserPreferences.Favorites.Contains(new FavoriteRepo(r.Repo.FullName)))
+            .OrderByDescending(r => appContext.Config.Favorites.Contains(r.Directory.FullName))
             .ThenByDescending(r => r.LastActivity)
             .ToList();
     }
@@ -66,7 +66,7 @@ class RepositoriesMenu(
     {
         if (consoleKeyInfo.Key == ConsoleKey.F)
         {
-            appContext.UserPreferences.ToggleFavorite(repo.Repo.FullName);
+            appContext.Config.ToggleFavorite(repo.Directory.FullName);
             configurationManager.Save();
             return SubmitResult.Refresh;
         }
@@ -75,7 +75,7 @@ class RepositoriesMenu(
         {
             if (consoleKeyInfo.Modifiers == ConsoleModifiers.None)
             {
-                RepositoryActionsMenu.StartLazygit(repo);
+                RepositoryActionsMenu.CommandToAction(appContext.Config.DefaultCommand).Action!(repo);
             }
             else if (consoleKeyInfo.Modifiers.HasFlag(ConsoleModifiers.Control)
                 || consoleKeyInfo.Modifiers.HasFlag(ConsoleModifiers.Shift))

@@ -23,12 +23,12 @@ var services = new ServiceCollection()
   .AddSingleton(TimeProvider.System)
   .AddSingleton(AnsiConsole.Console)
   // Menus
-  .AddSingleton<RepositoriesMenu>()
+  .AddSingleton<RepositoriesScreen>()
   .AddSingleton<RepositoryActionsMenu>()
   .BuildServiceProvider();
 
   // Run application
 await services
-  .GetRequiredService<RepositoriesMenu>()
-  .ShowAsync()
+  .GetRequiredService<RepositoriesScreen>()
+  .ShowAsync(AnsiConsole.Console, true, CancellationToken.None)
   .ConfigureAwait(false);

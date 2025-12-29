@@ -1,81 +1,41 @@
+using System.Diagnostics.CodeAnalysis;
 using DevTools.Components.MenuPrompt.Internals;
+using DevTools.Components.Screen;
 using Spectre.Console;
 using Spectre.Console.Rendering;
 
 namespace DevTools.Components.MenuPrompt;
 
-public class MenuPrompt<T> : IMenuPromptStrategy<T>
+public class MenuPrompt<T> : IScreenComponent
     where T : notnull
 {
     private readonly ListPromptTree<T> _tree;
-
-    /// <summary>
-    /// Gets or sets the title.
-    /// </summary>
-    public string? Title { get; set; }
-
-    /// <summary>
-    /// Gets or sets the page size.
-    /// Defaults to <c>20</c>.
-    /// </summary>
-    public int PageSize { get; set; } = MenuPromptConstants.DefaultPageSize;
-
-    /// <summary>
-    /// Gets or sets a value indicating whether the selection should wrap around when reaching the edge.
-    /// Defaults to <c>false</c>.
-    /// </summary>
-    public bool WrapAround { get; set; } = false;
-
-    /// <summary>
-    /// Gets or sets the highlight style of the selected choice.
-    /// </summary>
-    public Style? HighlightStyle { get; set; }
-
-    /// <summary>
-    /// Gets or sets the style of a disabled choice.
-    /// </summary>
-    public Style? DisabledStyle { get; set; }
-
-    /// <summary>
-    /// Gets or sets the style of highlighted search matches.
-    /// </summary>
-    public Style? SearchHighlightStyle { get; set; }
-
-    /// <summary>
-    /// Gets or sets the text that will be displayed when no search text has been entered.
-    /// </summary>
-    public string? SearchPlaceholderText { get; set; }
-
-    /// <summary>
-    /// Gets or sets the converter to get the display string for a choice. By default
-    /// the corresponding <see cref="TypeConverter"/> is used.
-    /// </summary>
-    public Func<T, string>? Converter { get; set; }
-
-    /// <summary>
-    /// Gets or sets the text that will be displayed if there are more choices to show.
-    /// </summary>
-    public string? MoreChoicesText { get; set; }
-
-    /// <summary>
-    /// Gets or sets the selection mode.
-    /// Defaults to <see cref="SelectionMode.Leaf"/>.
-    /// </summary>
-    public SelectionMode Mode { get; set; } = SelectionMode.Leaf;
-
-    /// <summary>
-    /// Gets or sets a value indicating whether or not search is enabled.
-    /// </summary>
-    public bool SearchEnabled { get; set; }
-
-    public int? DefaultIndex { get; set; }
-
-    public ConsoleKey[] AlternateSubmitKeys { get; set; } = [];
+    private MenuPromptState<T>? state;
 
     public MenuPrompt()
     {
         _tree = new ListPromptTree<T>(EqualityComparer<T>.Default);
     }
+
+    public string? Title { get; set; }
+    public int PageSize { get; set; } = 30;
+    public bool WrapAround { get; set; } = false;
+    public Style? HighlightStyle { get; set; }
+    public Style? DisabledStyle { get; set; }
+    public Style? SearchHighlightStyle { get; set; }
+    public string? SearchPlaceholderText { get; set; }
+    public Func<T, string>? Converter { get; set; }
+    public string? MoreChoicesText { get; set; }
+    public SelectionMode Mode { get; set; } = SelectionMode.Leaf;
+    public bool SearchEnabled { get; set; }
+    public int? DefaultIndex { get; set; }
+    public ConsoleKey[] ExitKeys { get; set; } = [];
+    public ConsoleKey[] ActionKeys { get; set; } = [];
+    public Func<IEnumerable<T>>? ChoiceProvider { get; set; }
+    public Action<T, ConsoleKeyInfo>? OnActionKeyPressed { get; set; }
+
+    public ConsoleKeyInfo? LastKey { get; private set; }
+    public int? CurrentIndex => state?.Index;
 
     public ISelectionItem<T> AddChoice(T item)
     {
@@ -84,22 +44,134 @@ public class MenuPrompt<T> : IMenuPromptStrategy<T>
         return node;
     }
 
-    /// <inheritdoc/>
-    public async Task<MenuPromptSubmitResult<T>> ShowAsync(IAnsiConsole console, CancellationToken cancellationToken)
+    public IRenderable BuildRenderable(IAnsiConsole console)
     {
-        // Create the list prompt
-        var prompt = new MenuPromptInternal<T>(console, this);
-        var converter = Converter ?? TypeConverterHelper.ConvertToString;
-        var result = await prompt.Show(_tree, converter, Mode, true, SearchEnabled, PageSize, WrapAround, DefaultIndex, cancellationToken)
-            .ConfigureAwait(false);
+        EnsureStateIsInitialized(console);
 
-        // Return the selected item
-        return result;
+        var indexState = BuildIndexState(console);
+
+        // Build the renderable
+        var disabledStyle = DisabledStyle ?? Color.Grey;
+        var highlightStyle = HighlightStyle ?? Color.Blue;
+        var searchHighlightStyle = SearchHighlightStyle ?? new Style(foreground: Color.Default, background: Color.Yellow, Decoration.Bold);
+
+        var list = new List<IRenderable>();
+        if (Title != null)
+        {
+            list.Add(new Markup(Title));
+        }
+
+        var grid = new Grid();
+        grid.AddColumn(new GridColumn().Padding(0, 0, 1, 0).NoWrap());
+
+        if (Title != null)
+        {
+            grid.AddEmptyRow();
+        }
+
+        var items = state.Items
+            .Skip(indexState.Skip)
+            .Take(indexState.Take)
+            .Select((node, index) => (Index: index, Node: node));
+
+        foreach (var item in items)
+        {
+            var current = item.Index == indexState.CursorIndex;
+            var prompt = item.Index == indexState.CursorIndex ? ListPromptConstants.Arrow : new string(' ', ListPromptConstants.Arrow.Length);
+            var style = item.Node.IsGroup && Mode == SelectionMode.Leaf
+                ? disabledStyle
+                : current ? highlightStyle : Style.Plain;
+
+            var indent = new string(' ', item.Node.Depth * 2);
+
+            var text = (Converter ?? TypeConverterHelper.ConvertToString)?.Invoke(item.Node.Data) ?? item.Node.Data.ToString() ?? "?";
+            if (current)
+            {
+                text = text.RemoveMarkup().EscapeMarkup();
+            }
+
+            if (state.SearchText.Length > 0 && !(item.Node.IsGroup && Mode == SelectionMode.Leaf))
+            {
+                text = text.Highlight(state.SearchText, searchHighlightStyle);
+            }
+
+            grid.AddRow(new Markup(indent + prompt + " " + text, style));
+        }
+
+        list.Add(grid);
+
+        if (SearchEnabled || indexState.Scrollable)
+        {
+            // Add padding
+            list.Add(Text.Empty);
+        }
+
+        if (SearchEnabled)
+        {
+            if (state.Searching)
+            {
+                list.Add(new Markup($"[{searchHighlightStyle.Background.ToMarkup()}]Searching [dim](Press ESC to cancel)[/] : {state.SearchText.EscapeMarkup()}[/]"));
+            }
+            else
+            {
+                list.Add(new Markup(SearchPlaceholderText ?? "[grey](Press ? to search)[/]"));
+            }
+        }
+
+        if (indexState.Scrollable)
+        {
+            // (Move up and down to reveal more choices)
+            list.Add(new Markup(MoreChoicesText ?? ListPromptConstants.MoreChoicesMarkup));
+        }
+
+        return new Rows(list);
     }
 
-    /// <inheritdoc/>
-    MenuPromptInputResult IMenuPromptStrategy<T>.HandleInput(ConsoleKeyInfo key, MenuPromptState<T> state)
+    private IndexState BuildIndexState(IAnsiConsole console)
     {
+        EnsureStateIsInitialized(console);
+
+        var middleOfList = state.PageSize / 2;
+        bool scrollable = state.ItemCount > state.PageSize;
+
+        var skip = 0;
+        var take = state.ItemCount;
+        var cursorIndex = state.Index;
+        
+        if (scrollable)
+        {
+            skip = Math.Max(0, state.Index - middleOfList);
+            take = Math.Min(state.PageSize, state.ItemCount - skip);
+
+            if (take < state.PageSize)
+            {
+                // Pointer should be below the middle of the (visual) list
+                var diff = state.PageSize - take;
+                skip -= diff;
+                take += diff;
+                cursorIndex = middleOfList + diff;
+            }
+            else
+            {
+                // Take skip into account
+                cursorIndex -= skip;
+            }
+        }
+
+        return new(
+            Scrollable: scrollable,
+            Skip: skip,
+            Take: take,
+            CursorIndex: cursorIndex
+        );
+    }
+
+    public ScreenInputResult HandleInput(IAnsiConsole console, ConsoleKeyInfo key)
+    {
+        EnsureStateIsInitialized(console);
+
+        LastKey = key;
+
         if (key.Key == ConsoleKey.Enter
          || key.Key == ConsoleKey.Packet
          || (!state.SearchEnabled && key.Key == ConsoleKey.Spacebar))
@@ -107,31 +179,42 @@ public class MenuPrompt<T> : IMenuPromptStrategy<T>
             // Selecting a non leaf in "leaf mode" is not allowed
             if (state.Current.IsGroup && Mode == SelectionMode.Leaf)
             {
-                return MenuPromptInputResult.None;
+                return ScreenInputResult.None;
             }
 
-            return MenuPromptInputResult.Submit;
+            return ScreenInputResult.Exit;
         }
 
         if (state.Searching)
         {
-            return MenuPromptInputResult.None;
+            return ScreenInputResult.None;
         }
         else if (SearchEnabled && key.Key == ConsoleKey.OemComma && key.Modifiers == ConsoleModifiers.Shift)
         {
             state.Searching = true;
         }
 
-        if (AlternateSubmitKeys.Contains(key.Key))
+        if (ExitKeys.Contains(key.Key))
         {
-            return MenuPromptInputResult.Submit;
+            return ScreenInputResult.Exit;
         }
 
-        return MenuPromptInputResult.None;
+        if (OnActionKeyPressed is not null && ActionKeys.Contains(key.Key))
+        {
+            OnActionKeyPressed.Invoke(state.Current.Data, key);
+            state = null;
+            return ScreenInputResult.Refresh;
+        }
+
+        if (state.Update(key))
+        {
+            return ScreenInputResult.Refresh;
+        }
+
+        return ScreenInputResult.None;
     }
 
-    /// <inheritdoc/>
-    int IMenuPromptStrategy<T>.CalculatePageSize(IAnsiConsole console, int totalItemCount, int requestedPageSize)
+    private int CalculatePageSize(IAnsiConsole console, int totalItemCount, int requestedPageSize)
     {
         var extra = 0;
 
@@ -165,78 +248,34 @@ public class MenuPrompt<T> : IMenuPromptStrategy<T>
         return requestedPageSize;
     }
 
-    /// <inheritdoc/>
-    IRenderable IMenuPromptStrategy<T>.Render(IAnsiConsole console, bool scrollable, int cursorIndex,
-        IEnumerable<(int Index, ListPromptItem<T> Node)> items, bool skipUnselectableItems, bool searching, string searchText)
+    [MemberNotNull(nameof(state))]
+    private void EnsureStateIsInitialized(IAnsiConsole console)
     {
-        var list = new List<IRenderable>();
-        var disabledStyle = DisabledStyle ?? Color.Grey;
-        var highlightStyle = HighlightStyle ?? Color.Blue;
-        var searchHighlightStyle = SearchHighlightStyle ?? new Style(foreground: Color.Default, background: Color.Yellow, Decoration.Bold);
-
-        if (Title != null)
+        if (state is not null)
         {
-            list.Add(new Markup(Title));
+            return;
         }
 
-        var grid = new Grid();
-        grid.AddColumn(new GridColumn().Padding(0, 0, 1, 0).NoWrap());
-
-        if (Title != null)
+        var nodes = _tree.Traverse().ToList();
+        if (nodes.Count == 0 && ChoiceProvider is not null)
         {
-            grid.AddEmptyRow();
-        }
-
-        foreach (var item in items)
-        {
-            var current = item.Index == cursorIndex;
-            var prompt = item.Index == cursorIndex ? ListPromptConstants.Arrow : new string(' ', ListPromptConstants.Arrow.Length);
-            var style = item.Node.IsGroup && Mode == SelectionMode.Leaf
-                ? disabledStyle
-                : current ? highlightStyle : Style.Plain;
-
-            var indent = new string(' ', item.Node.Depth * 2);
-
-            var text = (Converter ?? TypeConverterHelper.ConvertToString)?.Invoke(item.Node.Data) ?? item.Node.Data.ToString() ?? "?";
-            if (current)
+            var tree = new ListPromptTree<T>(EqualityComparer<T>.Default);
+            foreach(var item in ChoiceProvider().Select(c => new ListPromptItem<T>(c)))
             {
-                text = text.RemoveMarkup().EscapeMarkup();
+                tree.Add(item);
             }
-
-            if (searchText.Length > 0 && !(item.Node.IsGroup && Mode == SelectionMode.Leaf))
-            {
-                text = text.Highlight(searchText, searchHighlightStyle);
-            }
-
-            grid.AddRow(new Markup(indent + prompt + " " + text, style));
+            nodes = tree.Traverse().ToList();
         }
 
-        list.Add(grid);
-
-        if (SearchEnabled || scrollable)
+        if (nodes.Count == 0)
         {
-            // Add padding
-            list.Add(Text.Empty);
+            throw new InvalidOperationException("Cannot show an empty selection prompt. Please call the AddChoice() method to configure the prompt.");
         }
 
-        if (SearchEnabled)
-        {
-            if (searching)
-            {
-                list.Add(new Markup($"[{searchHighlightStyle.Background.ToMarkup()}]Searching [dim](Press ESC to cancel)[/] : {searchText.EscapeMarkup()}[/]"));
-            }
-            else
-            {
-                list.Add(new Markup(SearchPlaceholderText ?? MenuPromptConstants.SearchPlaceholderMarkup));
-            }
-        }
+        var converter = Converter ?? TypeConverterHelper.ConvertToString;
 
-        if (scrollable)
-        {
-            // (Move up and down to reveal more choices)
-            list.Add(new Markup(MoreChoicesText ?? ListPromptConstants.MoreChoicesMarkup));
-        }
-
-        return new Rows(list);
+        state = new MenuPromptState<T>(nodes, converter, CalculatePageSize(console, nodes.Count, PageSize), WrapAround, Mode, true, SearchEnabled, DefaultIndex);
     }
+
+    private record IndexState(bool Scrollable, int Skip, int Take, int CursorIndex);
 }

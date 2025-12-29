@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Spectre.Console;
 
 namespace DevTools.Components.MenuPrompt;
@@ -41,6 +40,12 @@ public static class MenuPromptExtensions
             return menu;
         }
 
+        public MenuPrompt<T> UseChoiceProvider(Func<IEnumerable<T>> provider)
+        {
+            menu.ChoiceProvider = provider;
+            return menu;
+        }
+
         public MenuPrompt<T> EnableSearch()
         {
             menu.SearchEnabled = true;
@@ -53,9 +58,21 @@ public static class MenuPromptExtensions
             return menu;
         }
 
-        public MenuPrompt<T> AddSubmitKeys(params ConsoleKey[] consoleKeys)
+        public MenuPrompt<T> AddExitKeys(params ConsoleKey[] consoleKeys)
         {
-            menu.AlternateSubmitKeys = consoleKeys ?? [];
+            menu.ExitKeys = consoleKeys ?? [];
+            return menu;
+        }
+
+        public MenuPrompt<T> AddActionKeys(params ConsoleKey[] consoleKeys)
+        {
+            menu.ActionKeys = consoleKeys ?? [];
+            return menu;
+        }
+
+        public MenuPrompt<T> UseOnActionKeyPressed(Action<T, ConsoleKeyInfo> handler)
+        {
+            menu.OnActionKeyPressed = handler;
             return menu;
         }
 

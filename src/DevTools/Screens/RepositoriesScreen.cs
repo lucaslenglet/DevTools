@@ -3,18 +3,18 @@ using DevTools.Components.Screen;
 using DevTools.Helpers;
 using DevTools.Models;
 using DevTools.Services;
+using Microsoft.Extensions.DependencyInjection;
 using Spectre.Console;
 
-namespace DevTools.Menus;
+namespace DevTools.Screens;
 
 class RepositoriesScreen : Screen
 {
     private readonly AppContext _appContext;
     private readonly RepositoryScanner _repositoryScanner;
     private readonly ConfigurationManager _configurationManager;
-    private readonly IAnsiConsole _console;
     private readonly TimeProvider _timeProvider;
-    private readonly RepositoryActionsMenu _actionsMenu;
+    private readonly IServiceProvider _serviceProvider;
 
     private MenuPrompt<GitRepoInfo>? menu;
 
@@ -24,17 +24,17 @@ class RepositoriesScreen : Screen
         ConfigurationManager configurationManager,
         IAnsiConsole console,
         TimeProvider timeProvider,
-        RepositoryActionsMenu actionsMenu)
+        IServiceProvider serviceProvider)
+        : base(console)
     {
         _appContext = appContext;
         _repositoryScanner = repositoryScanner;
         _configurationManager = configurationManager;
-        _console = console;
         _timeProvider = timeProvider;
-        _actionsMenu = actionsMenu;
+        _serviceProvider = serviceProvider;
     }
 
-    protected override Task OnInit()
+    protected override Task OnInit(CancellationToken cancellationToken)
     {
         var now = _timeProvider.GetLocalNow().DateTime;
 
@@ -66,7 +66,7 @@ class RepositoriesScreen : Screen
         return Task.CompletedTask;
     }
 
-    protected override async Task OnExit()
+    protected override async Task OnExit(CancellationToken cancellationToken)
     {
         var submitContext = menu!.SubmitContext;
 
@@ -79,22 +79,23 @@ class RepositoriesScreen : Screen
         {
             var repo = submitContext.CurrentItem;
 
-            if (submitContext.KeyInfo.Modifiers == ConsoleModifiers.None)
-            {
-                RepositoryActionsMenu.CommandToAction(_appContext.Config.DefaultCommand).Action!.Invoke(repo);
-            }
-            else if (submitContext.KeyInfo.Modifiers.HasFlag(ConsoleModifiers.Control)
+            if (submitContext.KeyInfo.Modifiers.HasFlag(ConsoleModifiers.Control)
                 || submitContext.KeyInfo.Modifiers.HasFlag(ConsoleModifiers.Shift))
             {
-                await _actionsMenu.ShowAsync(repo).ConfigureAwait(false);
+                await _serviceProvider.GetRequiredService<RepositoryActionsScreen>().ShowAsync(repo, cancellationToken).ConfigureAwait(false);
+                return;
             }
 
+            Console.Execute(
+                _appContext.Config.DefaultCommand.ProcessName,
+                StringHelper.FormatIfNotNull(_appContext.Config.DefaultCommand.WorkingDirectory, repo.Directory.FullName),
+                StringHelper.FormatIfNotNull(_appContext.Config.DefaultCommand.Arguments, repo.Directory.FullName));
             return;
         }
 
         if (submitContext.KeyInfo.Key == ConsoleKey.Q)
         {
-            _console.ClearAndExit();
+            Console.ClearAndExit();
         }
     }
 

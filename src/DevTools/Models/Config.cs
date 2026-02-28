@@ -20,6 +20,13 @@ class Config
         },
         new ConfigCommand
         {
+            ProcessName = "claude",
+            Name = "Claude Code",
+            Color = Color.DarkOrange.ToMarkup(),
+            WorkingDirectory = "{0}",
+        },
+        new ConfigCommand
+        {
             ProcessName = "copilot",
             Name = "Copilot",
             Color = Color.Silver.ToMarkup(),

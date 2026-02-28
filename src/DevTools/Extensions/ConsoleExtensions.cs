@@ -11,12 +11,5 @@ public static class ConsoleExtensions
             console.Clear();
             Environment.Exit(0);
         }
-
-        public void ClearAndDisplayHint(params string[] hints)
-        {
-            console.Clear();
-            console.MarkupLine(string.Join("[dim] | [/]", hints));
-            console.WriteLine();
-        }
     }
 }

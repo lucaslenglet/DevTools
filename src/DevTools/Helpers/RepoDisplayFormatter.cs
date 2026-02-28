@@ -5,15 +5,17 @@ namespace DevTools.Helpers;
 
 static class RepoDisplayFormatter
 {
-    public static string Format(GitRepoInfo repo, DateTime now, bool isFavorite)
+    public static string Format(GitRepoInfo repo, DateTime now, Config config)
     {
-        var favoriteIcon = isFavorite ? ":fire: " : "   ";
-        var displayName = FormatDisplayName(repo);
+        var favoriteIcon = config.IsFavorite(repo.Directory.FullName) ? ":fire: " : "   ";
+        var customDisplayName = config.GetDisplayName(repo.Directory.FullName);
+        var formattedDisplayName = FormatDisplayName(repo, customDisplayName);
         var timeStr = FormatTimeAgo(now - repo.LastActivity, repo.LastActivity);
         var (remoteStatus, remoteColor) = GetRemoteStatus(repo);
         var branchColor = GetBranchColor(repo.Branch);
+        var renamed = customDisplayName is not null ? ":crayon: " : "  ";
 
-        return $"{favoriteIcon}{displayName} [dim]{timeStr.PadRight(15)}[/][{remoteColor}]{remoteStatus.PadRight(10)}[/][{branchColor}]{repo.Branch.EscapeMarkup().PadRight(50)}[/]";
+        return $"{favoriteIcon}{formattedDisplayName}{renamed} [dim]{timeStr.PadRight(15)}[/][{remoteColor}]{remoteStatus.PadRight(10)}[/][{branchColor}]{repo.Branch.EscapeMarkup().PadRight(50)}[/]";
     }
 
     private static string FormatTimeAgo(TimeSpan timeAgo, DateTime lastActivity) =>
@@ -36,10 +38,17 @@ static class RepoDisplayFormatter
             _ => ("", "dim")
         };
 
-    private static string FormatDisplayName(GitRepoInfo repo) =>
-        string.IsNullOrEmpty(repo.ParentFolder)
+    private static string FormatDisplayName(GitRepoInfo repo, string? customDisplayName)
+    {
+        if (customDisplayName != null)
+        {
+            return customDisplayName.PadRight(60).EscapeMarkup();
+        }
+
+        return string.IsNullOrEmpty(repo.ParentFolder)
             ? repo.Directory.Name.PadRight(60)
             : $"[dim]{repo.ParentFolder.EscapeMarkup()}[/] > {repo.Directory.Name.EscapeMarkup()}".PadRight(68);
+    }
 
     private static string GetBranchColor(string branch)
     {

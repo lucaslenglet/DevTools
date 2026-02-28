@@ -9,6 +9,8 @@ static class SerdeHelper
 
     private static ISerializer Serializer { get; } = new SerializerBuilder()
         .WithNamingConvention(NamingConvention)
+        .ConfigureDefaultValuesHandling(DefaultValuesHandling.OmitDefaults | DefaultValuesHandling.OmitEmptyCollections)
+        .DisableAliases()
         .Build();
 
     private static IDeserializer Deserializer { get; } = new DeserializerBuilder()

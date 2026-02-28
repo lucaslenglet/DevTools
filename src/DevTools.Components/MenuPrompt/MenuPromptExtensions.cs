@@ -1,3 +1,4 @@
+using DevTools.Components.Screen;
 using Spectre.Console;
 
 namespace DevTools.Components.MenuPrompt;
@@ -15,7 +16,7 @@ public static class MenuPromptExtensions
 
         public MenuPrompt<T> AddChoices(IEnumerable<T> choices)
         {
-            foreach(var choice in choices)
+            foreach (var choice in choices)
             {
                 menu.AddChoice(choice);
             }
@@ -58,21 +59,13 @@ public static class MenuPromptExtensions
             return menu;
         }
 
-        public MenuPrompt<T> AddExitKeys(params ConsoleKey[] consoleKeys)
+        /// <summary>
+        /// Registers a key binding. The handler receives a <see cref="MenuKeyContext{T}"/> with the
+        /// current item, index, key info, and navigation/reset capabilities.
+        /// </summary>
+        public MenuPrompt<T> BindKey(ConsoleKey key, Func<MenuKeyContext<T>, ScreenInputResult> handler)
         {
-            menu.ExitKeys = consoleKeys ?? [];
-            return menu;
-        }
-
-        public MenuPrompt<T> AddActionKeys(params ConsoleKey[] consoleKeys)
-        {
-            menu.ActionKeys = consoleKeys ?? [];
-            return menu;
-        }
-
-        public MenuPrompt<T> UseOnActionKeyPressed(Action<T, ConsoleKeyInfo> handler)
-        {
-            menu.OnActionKeyPressed = handler;
+            menu.BindKey(key, handler);
             return menu;
         }
 

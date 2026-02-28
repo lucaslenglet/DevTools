@@ -14,7 +14,7 @@ class RepositoriesScreen : Screen
     private readonly ConfigurationManager _configurationManager;
     private readonly IAnsiConsole _console;
     private readonly TimeProvider _timeProvider;
-    
+
     private MenuPrompt<GitRepoInfo> menu;
     private List<GitRepoInfo> repos;
 
@@ -37,7 +37,7 @@ class RepositoriesScreen : Screen
         var now = _timeProvider.GetLocalNow().DateTime;
 
         var hints = new Markup(string.Join("[dim] | [/]", Hints.Exit!, Hints.ConfigPath(_appContext.ConfigFilePath)!));
-        
+
         AddElement(hints);
         AddElement(Text.Empty);
 
@@ -49,9 +49,14 @@ class RepositoriesScreen : Screen
             .SearchHighlightStyle(Styles.SearchHightlight)
             .EnableSearch()
             .EnableWrapArount()
-            .AddExitKeys(ConsoleKey.Q!)
-            .AddActionKeys(ConsoleKey.F!)
-            .UseOnActionKeyPressed(OnActionKeyPressed)
+            .BindKey(ConsoleKey.Q, _ => ScreenInputResult.Exit)
+            .BindKey(ConsoleKey.F, ctx =>
+            {
+                _appContext.Config.ToggleFavorite(ctx.CurrentItem.Directory.FullName);
+                _configurationManager.Save();
+                ctx.Reset();
+                return ScreenInputResult.Refresh;
+            })
             .SetDefaultIndex(menu?.CurrentIndex ?? 0);
 
         AddElement(menu);
@@ -61,21 +66,21 @@ class RepositoriesScreen : Screen
 
     protected override Task OnExit()
     {
-        var exitKey = menu.LastKey;
+        var submitContext = menu.SubmitContext;
 
-        if (exitKey is null)
+        if (submitContext is null)
         {
             return Task.CompletedTask;
         }
 
-        if (exitKey.Value.Key == ConsoleKey.Enter)
+        if (submitContext.KeyInfo.Key == ConsoleKey.Enter)
         {
-            if (exitKey.Value.Modifiers == ConsoleModifiers.None)
+            if (submitContext.KeyInfo.Modifiers == ConsoleModifiers.None)
             {
                 // RepositoryActionsMenu.CommandToAction(appContext.Config.DefaultCommand).Action!(repo);
             }
-            else if (exitKey.Value.Modifiers.HasFlag(ConsoleModifiers.Control)
-                || exitKey.Value.Modifiers.HasFlag(ConsoleModifiers.Shift))
+            else if (submitContext.KeyInfo.Modifiers.HasFlag(ConsoleModifiers.Control)
+                || submitContext.KeyInfo.Modifiers.HasFlag(ConsoleModifiers.Shift))
             {
                 // await actionsMenu.ShowAsync(repo).ConfigureAwait(false);
             }
@@ -83,22 +88,12 @@ class RepositoriesScreen : Screen
             return Task.CompletedTask;
         }
 
-        if (exitKey.Value.Key == ConsoleKey.Q)
+        if (submitContext.KeyInfo.Key == ConsoleKey.Q)
         {
             _console.ClearAndExit();
         }
 
         return Task.CompletedTask;
-    }
-
-    private void OnActionKeyPressed(GitRepoInfo repo, ConsoleKeyInfo consoleKey)
-    {
-        if (consoleKey.Key == ConsoleKey.F)
-        {
-            _appContext.Config.ToggleFavorite(repo.Directory.FullName);
-            _configurationManager.Save();
-            return;
-        }
     }
 
     private List<GitRepoInfo> FetchRepos()

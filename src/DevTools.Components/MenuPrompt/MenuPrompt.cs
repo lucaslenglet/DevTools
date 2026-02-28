@@ -9,12 +9,17 @@ namespace DevTools.Components.MenuPrompt;
 public class MenuPrompt<T> : IScreenComponent
     where T : notnull
 {
-    private readonly ListPromptTree<T> _tree;
-    private MenuPromptState<T>? state;
+    private const string ArrowMarker = ">";
+    private const string MoreChoicesMarkup = "[grey](Move up and down to reveal more choices)[/]";
+
+    private readonly MenuTree<T> _tree;
+    private readonly Dictionary<ConsoleKey, Func<MenuKeyContext<T>, ScreenInputResult>> _keyBindings = new();
+    private MenuPromptState<T>? _state;
 
     public MenuPrompt()
     {
-        _tree = new ListPromptTree<T>(EqualityComparer<T>.Default);
+        _tree = new MenuTree<T>();
+        RegisterDefaultBindings();
     }
 
     public string? Title { get; set; }
@@ -26,31 +31,37 @@ public class MenuPrompt<T> : IScreenComponent
     public string? SearchPlaceholderText { get; set; }
     public Func<T, string>? Converter { get; set; }
     public string? MoreChoicesText { get; set; }
-    public SelectionMode Mode { get; set; } = SelectionMode.Leaf;
+    public MenuSelectionMode Mode { get; set; } = MenuSelectionMode.Leaf;
     public bool SearchEnabled { get; set; }
     public int? DefaultIndex { get; set; }
-    public ConsoleKey[] ExitKeys { get; set; } = [];
-    public ConsoleKey[] ActionKeys { get; set; } = [];
     public Func<IEnumerable<T>>? ChoiceProvider { get; set; }
-    public Action<T, ConsoleKeyInfo>? OnActionKeyPressed { get; set; }
 
-    public ConsoleKeyInfo? LastKey { get; private set; }
-    public int? CurrentIndex => state?.Index;
+    /// <summary>Set after the menu exits. Provides the selected item and the key that triggered the exit.</summary>
+    public MenuKeyContext<T>? SubmitContext { get; private set; }
 
-    public ISelectionItem<T> AddChoice(T item)
+    public int? CurrentIndex => _state?.Index;
+
+    public IMenuItem<T> AddChoice(T item)
     {
-        var node = new ListPromptItem<T>(item);
-        _tree.Add(node);
-        return node;
+        return _tree.Add(item);
+    }
+
+    /// <summary>
+    /// Registers a key binding. The handler receives a rich context with the current item,
+    /// index, key info, and navigation/reset capabilities.
+    /// </summary>
+    public MenuPrompt<T> BindKey(ConsoleKey key, Func<MenuKeyContext<T>, ScreenInputResult> handler)
+    {
+        _keyBindings[key] = handler;
+        return this;
     }
 
     public IRenderable BuildRenderable(IAnsiConsole console)
     {
         EnsureStateIsInitialized(console);
 
-        var indexState = BuildIndexState(console);
+        var indexState = BuildIndexState();
 
-        // Build the renderable
         var disabledStyle = DisabledStyle ?? Color.Grey;
         var highlightStyle = HighlightStyle ?? Color.Blue;
         var searchHighlightStyle = SearchHighlightStyle ?? new Style(foreground: Color.Default, background: Color.Yellow, Decoration.Bold);
@@ -69,7 +80,7 @@ public class MenuPrompt<T> : IScreenComponent
             grid.AddEmptyRow();
         }
 
-        var items = state.Items
+        var items = _state.Items
             .Skip(indexState.Skip)
             .Take(indexState.Take)
             .Select((node, index) => (Index: index, Node: node));
@@ -77,22 +88,22 @@ public class MenuPrompt<T> : IScreenComponent
         foreach (var item in items)
         {
             var current = item.Index == indexState.CursorIndex;
-            var prompt = item.Index == indexState.CursorIndex ? ListPromptConstants.Arrow : new string(' ', ListPromptConstants.Arrow.Length);
-            var style = item.Node.IsGroup && Mode == SelectionMode.Leaf
+            var prompt = current ? ArrowMarker : new string(' ', ArrowMarker.Length);
+            var style = item.Node.IsGroup && Mode == MenuSelectionMode.Leaf
                 ? disabledStyle
                 : current ? highlightStyle : Style.Plain;
 
             var indent = new string(' ', item.Node.Depth * 2);
 
-            var text = (Converter ?? TypeConverterHelper.ConvertToString)?.Invoke(item.Node.Data) ?? item.Node.Data.ToString() ?? "?";
+            var text = (Converter ?? DefaultConverter).Invoke(item.Node.Data);
             if (current)
             {
                 text = text.RemoveMarkup().EscapeMarkup();
             }
 
-            if (state.SearchText.Length > 0 && !(item.Node.IsGroup && Mode == SelectionMode.Leaf))
+            if (_state.SearchText.Length > 0 && !(item.Node.IsGroup && Mode == MenuSelectionMode.Leaf))
             {
-                text = text.Highlight(state.SearchText, searchHighlightStyle);
+                text = text.Highlight(_state.SearchText, searchHighlightStyle);
             }
 
             grid.AddRow(new Markup(indent + prompt + " " + text, style));
@@ -102,15 +113,14 @@ public class MenuPrompt<T> : IScreenComponent
 
         if (SearchEnabled || indexState.Scrollable)
         {
-            // Add padding
             list.Add(Text.Empty);
         }
 
         if (SearchEnabled)
         {
-            if (state.Searching)
+            if (_state.Searching)
             {
-                list.Add(new Markup($"[{searchHighlightStyle.Background.ToMarkup()}]Searching [dim](Press ESC to cancel)[/] : {state.SearchText.EscapeMarkup()}[/]"));
+                list.Add(new Markup($"[{searchHighlightStyle.Background.ToMarkup()}]Searching [dim](Press ESC to cancel)[/] : {_state.SearchText.EscapeMarkup()}[/]"));
             }
             else
             {
@@ -120,40 +130,163 @@ public class MenuPrompt<T> : IScreenComponent
 
         if (indexState.Scrollable)
         {
-            // (Move up and down to reveal more choices)
-            list.Add(new Markup(MoreChoicesText ?? ListPromptConstants.MoreChoicesMarkup));
+            list.Add(new Markup(MoreChoicesText ?? MoreChoicesMarkup));
         }
 
         return new Rows(list);
     }
 
-    private IndexState BuildIndexState(IAnsiConsole console)
+    public ScreenInputResult HandleInput(IAnsiConsole console, ConsoleKeyInfo key)
     {
         EnsureStateIsInitialized(console);
 
-        var middleOfList = state.PageSize / 2;
-        bool scrollable = state.ItemCount > state.PageSize;
+        if (_state.Searching)
+        {
+            // Give registered bindings priority so consumers can override search-mode keys.
+            if (_keyBindings.TryGetValue(key.Key, out var searchHandler))
+            {
+                var ctx = CreateContext(key);
+                var result = searchHandler(ctx);
+                if (result == ScreenInputResult.Exit)
+                {
+                    SubmitContext = ctx;
+                }
+                return result;
+            }
+
+            // Forward everything else to search input handling.
+            return _state.HandleSearchInput(key)
+                ? ScreenInputResult.Refresh
+                : ScreenInputResult.None;
+        }
+
+        if (_keyBindings.TryGetValue(key.Key, out var handler))
+        {
+            var ctx = CreateContext(key);
+            var result = handler(ctx);
+            if (result == ScreenInputResult.Exit)
+            {
+                SubmitContext = ctx;
+            }
+            return result;
+        }
+
+        return ScreenInputResult.None;
+    }
+
+    private MenuKeyContext<T> CreateContext(ConsoleKeyInfo key)
+    {
+        return new MenuKeyContext<T>(_state!, key, ResetState);
+    }
+
+    private void ResetState()
+    {
+        _state = null;
+    }
+
+    private void RegisterDefaultBindings()
+    {
+        // Navigation — use leaf-aware state methods so group items are skipped in Leaf mode.
+        _keyBindings[ConsoleKey.UpArrow] = _ => NavRelative(-1);
+        _keyBindings[ConsoleKey.K] = _ => NavRelative(-1);
+        _keyBindings[ConsoleKey.DownArrow] = _ => NavRelative(+1);
+        _keyBindings[ConsoleKey.J] = _ => NavRelative(+1);
+        _keyBindings[ConsoleKey.Home] = _ => { _state!.MoveFirst(); return ScreenInputResult.Refresh; };
+        _keyBindings[ConsoleKey.End] = _ => { _state!.MoveLast(); return ScreenInputResult.Refresh; };
+        _keyBindings[ConsoleKey.PageUp] = _ => NavPage(-1);
+        _keyBindings[ConsoleKey.PageDown] = _ => NavPage(+1);
+
+        // Submit
+        _keyBindings[ConsoleKey.Enter] = TrySubmit;
+        _keyBindings[ConsoleKey.Packet] = TrySubmit;
+        _keyBindings[ConsoleKey.Spacebar] = ctx =>
+        {
+            // Spacebar submits only when search is not active (search-mode check is upstream).
+            if (SearchEnabled)
+            {
+                return ScreenInputResult.None;
+            }
+            return TrySubmit(ctx);
+        };
+
+        // Search toggle — handler checks Shift modifier to match '?' character.
+        _keyBindings[ConsoleKey.OemComma] = ctx =>
+        {
+            if (SearchEnabled && ctx.KeyInfo.Modifiers == ConsoleModifiers.Shift)
+            {
+                _state!.Searching = true;
+                return ScreenInputResult.Refresh;
+            }
+            return ScreenInputResult.None;
+        };
+
+        // Escape and Backspace cancel/modify search when searching (registered so they participate
+        // in the search-mode binding lookup and consumers can override if needed).
+        _keyBindings[ConsoleKey.Escape] = ctx =>
+        {
+            if (_state!.Searching)
+            {
+                _state.HandleSearchInput(ctx.KeyInfo);
+                return ScreenInputResult.Refresh;
+            }
+            return ScreenInputResult.None;
+        };
+
+        _keyBindings[ConsoleKey.Backspace] = ctx =>
+        {
+            if (_state!.Searching)
+            {
+                _state.HandleSearchInput(ctx.KeyInfo);
+                return ScreenInputResult.Refresh;
+            }
+            return ScreenInputResult.None;
+        };
+    }
+
+    private ScreenInputResult NavRelative(int delta)
+    {
+        _state!.MoveRelative(delta);
+        return ScreenInputResult.Refresh;
+    }
+
+    private ScreenInputResult NavPage(int direction)
+    {
+        _state!.MovePage(direction * _state.PageSize);
+        return ScreenInputResult.Refresh;
+    }
+
+    private ScreenInputResult TrySubmit(MenuKeyContext<T> ctx)
+    {
+        if (_state!.Current.IsGroup && Mode == MenuSelectionMode.Leaf)
+        {
+            return ScreenInputResult.None;
+        }
+        return ScreenInputResult.Exit;
+    }
+
+    private IndexState BuildIndexState()
+    {
+        var middleOfList = _state!.PageSize / 2;
+        bool scrollable = _state.ItemCount > _state.PageSize;
 
         var skip = 0;
-        var take = state.ItemCount;
-        var cursorIndex = state.Index;
-        
+        var take = _state.ItemCount;
+        var cursorIndex = _state.Index;
+
         if (scrollable)
         {
-            skip = Math.Max(0, state.Index - middleOfList);
-            take = Math.Min(state.PageSize, state.ItemCount - skip);
+            skip = Math.Max(0, _state.Index - middleOfList);
+            take = Math.Min(_state.PageSize, _state.ItemCount - skip);
 
-            if (take < state.PageSize)
+            if (take < _state.PageSize)
             {
-                // Pointer should be below the middle of the (visual) list
-                var diff = state.PageSize - take;
+                var diff = _state.PageSize - take;
                 skip -= diff;
                 take += diff;
                 cursorIndex = middleOfList + diff;
             }
             else
             {
-                // Take skip into account
                 cursorIndex -= skip;
             }
         }
@@ -166,61 +299,12 @@ public class MenuPrompt<T> : IScreenComponent
         );
     }
 
-    public ScreenInputResult HandleInput(IAnsiConsole console, ConsoleKeyInfo key)
-    {
-        EnsureStateIsInitialized(console);
-
-        LastKey = key;
-
-        if (key.Key == ConsoleKey.Enter
-         || key.Key == ConsoleKey.Packet
-         || (!state.SearchEnabled && key.Key == ConsoleKey.Spacebar))
-        {
-            // Selecting a non leaf in "leaf mode" is not allowed
-            if (state.Current.IsGroup && Mode == SelectionMode.Leaf)
-            {
-                return ScreenInputResult.None;
-            }
-
-            return ScreenInputResult.Exit;
-        }
-
-        if (state.Searching)
-        {
-            return ScreenInputResult.None;
-        }
-        else if (SearchEnabled && key.Key == ConsoleKey.OemComma && key.Modifiers == ConsoleModifiers.Shift)
-        {
-            state.Searching = true;
-        }
-
-        if (ExitKeys.Contains(key.Key))
-        {
-            return ScreenInputResult.Exit;
-        }
-
-        if (OnActionKeyPressed is not null && ActionKeys.Contains(key.Key))
-        {
-            OnActionKeyPressed.Invoke(state.Current.Data, key);
-            state = null;
-            return ScreenInputResult.Refresh;
-        }
-
-        if (state.Update(key))
-        {
-            return ScreenInputResult.Refresh;
-        }
-
-        return ScreenInputResult.None;
-    }
-
     private int CalculatePageSize(IAnsiConsole console, int totalItemCount, int requestedPageSize)
     {
         var extra = 0;
 
         if (Title != null)
         {
-            // Title takes up two rows including a blank line
             extra += 2;
         }
 
@@ -248,10 +332,10 @@ public class MenuPrompt<T> : IScreenComponent
         return requestedPageSize;
     }
 
-    [MemberNotNull(nameof(state))]
+    [MemberNotNull(nameof(_state))]
     private void EnsureStateIsInitialized(IAnsiConsole console)
     {
-        if (state is not null)
+        if (_state is not null)
         {
             return;
         }
@@ -259,8 +343,8 @@ public class MenuPrompt<T> : IScreenComponent
         var nodes = _tree.Traverse().ToList();
         if (nodes.Count == 0 && ChoiceProvider is not null)
         {
-            var tree = new ListPromptTree<T>(EqualityComparer<T>.Default);
-            foreach(var item in ChoiceProvider().Select(c => new ListPromptItem<T>(c)))
+            var tree = new MenuTree<T>();
+            foreach (var item in ChoiceProvider())
             {
                 tree.Add(item);
             }
@@ -272,10 +356,12 @@ public class MenuPrompt<T> : IScreenComponent
             throw new InvalidOperationException("Cannot show an empty selection prompt. Please call the AddChoice() method to configure the prompt.");
         }
 
-        var converter = Converter ?? TypeConverterHelper.ConvertToString;
+        var converter = Converter ?? DefaultConverter;
 
-        state = new MenuPromptState<T>(nodes, converter, CalculatePageSize(console, nodes.Count, PageSize), WrapAround, Mode, true, SearchEnabled, DefaultIndex);
+        _state = new MenuPromptState<T>(nodes, converter, CalculatePageSize(console, nodes.Count, PageSize), WrapAround, Mode, true, SearchEnabled, DefaultIndex);
     }
+
+    private static string DefaultConverter(T item) => item.ToString() ?? "?";
 
     private record IndexState(bool Scrollable, int Skip, int Take, int CursorIndex);
 }

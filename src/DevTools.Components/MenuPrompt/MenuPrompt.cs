@@ -143,7 +143,7 @@ public class MenuPrompt<T> : IScreenComponent
         if (_state.Searching)
         {
             // Give registered bindings priority so consumers can override search-mode keys.
-            if (_keyBindings.TryGetValue(key.Key, out var searchHandler))
+            if (char.IsControl(key.KeyChar) && _keyBindings.TryGetValue(key.Key, out var searchHandler))
             {
                 var ctx = CreateContext(key);
                 var result = searchHandler(ctx);

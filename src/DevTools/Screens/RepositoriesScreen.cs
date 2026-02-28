@@ -79,7 +79,7 @@ class RepositoriesScreen(
         
         if (submitContext.KeyInfo.Key == ConsoleKey.F2)
         {
-            await _serviceProvider.GetRequiredService<RepoPathsScreen>().ShowAsync(cancellationToken).ConfigureAwait(false);
+            await _serviceProvider.GetRequiredService<RepoPathsScreen>().ShowSettingsAsync(cancellationToken).ConfigureAwait(false);
         }
         else if (submitContext.KeyInfo.Key == ConsoleKey.R)
         {

@@ -39,10 +39,7 @@ class RepositoryCommandsScreen(IAnsiConsole console, AppContext appContext) : Sc
         menu = new MenuPrompt<RepositoryAction>()
             .Title($"Select a [green]command[/] [dim]({repo!.Directory.FullName})[/] :")
             .UseConverter(o => $"[{o.ToMarkup()}]{o.Text,-20}[/]")
-            .AddChoices([
-                .. _appContext.Config.CustomCommands.Select(c => new RepositoryAction(c.Name, c, c.Color)),
-                new RepositoryAction("← Back", Decoration: Decoration.Dim.ToString()),
-            ])
+            .AddChoices(_appContext.Config.CustomCommands.Select(c => new RepositoryAction(c.Name, c, c.Color)))
             .HighlightStyle(Styles.Hightlight)
             .SearchHighlightStyle(Styles.SearchHightlight)
             .EnableWrapArount()

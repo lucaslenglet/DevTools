@@ -7,7 +7,7 @@ namespace DevTools.Screens;
 
 class RepoPathsScreen(IAnsiConsole console, AppContext appContext, ConfigurationManager configManager) : Screen(console)
 {
-    private const string Sentinel = "+ Add directory...";
+    private const string Sentinel = "[green]+ Add[/] directory";
 
     private MenuPrompt<string>? menu;
     private bool shouldStay = false;
@@ -29,9 +29,9 @@ class RepoPathsScreen(IAnsiConsole console, AppContext appContext, Configuration
         AddElement(Text.Empty);
 
         menu = new MenuPrompt<string>()
-            .Title("[green]Repository directories[/]:")
+            .Title("[green]Git[/] directories :")
             .UseChoiceProvider(() => [.. appContext.Config.RepoPaths, Sentinel])
-            .UseConverter(p => p == Sentinel ? $"[dim]{p}[/]" : $"{p.EscapeMarkup()}")
+            .UseConverter(p => p == Sentinel ? p : $"{p.EscapeMarkup()}")
             .HighlightStyle(Styles.Hightlight)
             .EnableWrapArount()
             .BindKey(ConsoleKey.A, _ =>
@@ -56,7 +56,7 @@ class RepoPathsScreen(IAnsiConsole console, AppContext appContext, Configuration
         return Task.CompletedTask;
     }
 
-    protected override Task OnExit(CancellationToken cancellationToken)
+    protected override async Task OnExit(CancellationToken cancellationToken)
     {
         shouldStay = false;
 
@@ -64,19 +64,21 @@ class RepoPathsScreen(IAnsiConsole console, AppContext appContext, Configuration
 
         if (ctx is null)
         {
-            return Task.CompletedTask;
+            return;
         }
 
         if (ctx.KeyInfo.Key == ConsoleKey.Q)
         {
             Console.ClearAndExit();
-            return Task.CompletedTask;
+            return;
         }
 
         if ((ctx.KeyInfo.Key == ConsoleKey.Enter && ctx.CurrentItem == Sentinel)
             || ctx.KeyInfo.Key == ConsoleKey.A)
         {
-            var path = Console.Prompt(new TextPrompt<string>("[dim]Enter directory path:[/]").AllowEmpty()).Trim();
+            var inputScreen = new TextInputScreen(Console, "Enter [green]directory path[/] :");
+            await inputScreen.ShowAsync(cancellationToken);
+            var path = inputScreen.Value;
 
             if (!string.IsNullOrWhiteSpace(path)
                 && Directory.Exists(path)
@@ -93,7 +95,5 @@ class RepoPathsScreen(IAnsiConsole console, AppContext appContext, Configuration
         {
             shouldStay = true;
         }
-
-        return Task.CompletedTask;
     }
 }

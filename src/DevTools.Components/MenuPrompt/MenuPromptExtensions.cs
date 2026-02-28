@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Spectre.Console;
 
 namespace DevTools.Components.MenuPrompt;
@@ -16,7 +15,7 @@ public static class MenuPromptExtensions
 
         public MenuPrompt<T> AddChoices(IEnumerable<T> choices)
         {
-            foreach(var choice in choices)
+            foreach (var choice in choices)
             {
                 menu.AddChoice(choice);
             }
@@ -41,6 +40,12 @@ public static class MenuPromptExtensions
             return menu;
         }
 
+        public MenuPrompt<T> UseChoiceProvider(Func<IEnumerable<T>> provider)
+        {
+            menu.ChoiceProvider = provider;
+            return menu;
+        }
+
         public MenuPrompt<T> EnableSearch()
         {
             menu.SearchEnabled = true;
@@ -50,12 +55,6 @@ public static class MenuPromptExtensions
         public MenuPrompt<T> EnableWrapArount()
         {
             menu.WrapAround = true;
-            return menu;
-        }
-
-        public MenuPrompt<T> AddSubmitKeys(params ConsoleKey[] consoleKeys)
-        {
-            menu.AlternateSubmitKeys = consoleKeys ?? [];
             return menu;
         }
 

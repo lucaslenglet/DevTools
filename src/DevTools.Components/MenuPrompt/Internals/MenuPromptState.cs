@@ -1,6 +1,3 @@
-using System.Diagnostics;
-using Spectre.Console;
-
 namespace DevTools.Components.MenuPrompt.Internals;
 
 internal class MenuPromptState<T>
@@ -12,21 +9,22 @@ internal class MenuPromptState<T>
     public int ItemCount => Items.Count;
     public int PageSize { get; }
     public bool WrapAround { get; }
-    public SelectionMode Mode { get; }
+    public MenuSelectionMode Mode { get; }
     public bool SkipUnselectableItems { get; private set; }
     public bool SearchEnabled { get; }
-    public IReadOnlyList<ListPromptItem<T>> Items { get; }
-    private readonly IReadOnlyList<int>? _leafIndexes;
+    public IReadOnlyList<MenuPromptItem<T>> Items { get; }
+    // Non-null when Mode==Leaf and SkipUnselectableItems; contains the flat indexes of selectable items.
+    private readonly List<int>? _leafIndexes;
 
-    public ListPromptItem<T> Current => Items[Index];
+    public MenuPromptItem<T> Current => Items[Index];
     public string SearchText { get => field.TrimStart('?'); private set; }
     public bool Searching { get; set; }
 
     public MenuPromptState(
-        IReadOnlyList<ListPromptItem<T>> items,
+        IReadOnlyList<MenuPromptItem<T>> items,
         Func<T, string> converter,
         int pageSize, bool wrapAround,
-        SelectionMode mode,
+        MenuSelectionMode mode,
         bool skipUnselectableItems,
         bool searchEnabled,
         int? defaultIndex)
@@ -40,17 +38,15 @@ internal class MenuPromptState<T>
         SearchEnabled = searchEnabled;
         SearchText = string.Empty;
 
-        if (SkipUnselectableItems && mode == SelectionMode.Leaf)
+        if (SkipUnselectableItems && mode == MenuSelectionMode.Leaf)
         {
-            _leafIndexes =
-                Items
-                    .Select((item, index) => new { item, index })
-                    .Where(x => !x.item.IsGroup)
-                    .Select(x => x.index)
-                    .ToList()
-                    .AsReadOnly();
+            _leafIndexes = Items
+                .Select((item, index) => (item, index))
+                .Where(x => !x.item.IsGroup)
+                .Select(x => x.index)
+                .ToList();
 
-            Index = _leafIndexes.FirstOrDefault();
+            Index = _leafIndexes.Count > 0 ? _leafIndexes[0] : 0;
         }
         else
         {
@@ -63,135 +59,129 @@ internal class MenuPromptState<T>
         }
     }
 
-    public bool Update(ConsoleKeyInfo keyInfo)
+    /// <summary>
+    /// Moves cursor to an absolute index (clamped/wrapped). Intended for direct jumps by consumers.
+    /// </summary>
+    public bool MoveTo(int index)
     {
-        var index = Index;
-        if (SkipUnselectableItems && Mode == SelectionMode.Leaf)
+        var previous = Index;
+        Index = Clamp(index);
+        return Index != previous;
+    }
+
+    /// <summary>
+    /// Moves cursor by a relative delta, respecting Leaf mode (skips group items).
+    /// </summary>
+    public bool MoveRelative(int delta)
+    {
+        var previous = Index;
+
+        if (_leafIndexes != null)
         {
-            Debug.Assert(_leafIndexes != null, nameof(_leafIndexes) + " == null");
-            var currentLeafIndex = _leafIndexes.IndexOf(index);
-            switch (keyInfo.Key)
+            var currentLeafIndex = _leafIndexes.IndexOf(Index);
+            var nextLeafIndex = currentLeafIndex + delta;
+
+            if (WrapAround)
             {
-                case ConsoleKey.UpArrow:
-                case ConsoleKey.K:
-                    if (currentLeafIndex > 0)
-                    {
-                        index = _leafIndexes[currentLeafIndex - 1];
-                    }
-                    else if (WrapAround)
-                    {
-                        index = _leafIndexes.LastOrDefault();
-                    }
+                nextLeafIndex = ((_leafIndexes.Count + nextLeafIndex) % _leafIndexes.Count + _leafIndexes.Count) % _leafIndexes.Count;
+            }
+            else
+            {
+                nextLeafIndex = Math.Clamp(nextLeafIndex, 0, _leafIndexes.Count - 1);
+            }
 
-                    break;
-
-                case ConsoleKey.DownArrow:
-                case ConsoleKey.J:
-                    if (currentLeafIndex < _leafIndexes.Count - 1)
-                    {
-                        index = _leafIndexes[currentLeafIndex + 1];
-                    }
-                    else if (WrapAround)
-                    {
-                        index = _leafIndexes.FirstOrDefault();
-                    }
-
-                    break;
-
-                case ConsoleKey.Home:
-                    index = _leafIndexes.FirstOrDefault();
-                    break;
-
-                case ConsoleKey.End:
-                    index = _leafIndexes.LastOrDefault();
-                    break;
-
-                case ConsoleKey.PageUp:
-                    index = Math.Max(currentLeafIndex - PageSize, 0);
-                    if (index < _leafIndexes.Count)
-                    {
-                        index = _leafIndexes[index];
-                    }
-
-                    break;
-
-                case ConsoleKey.PageDown:
-                    index = Math.Min(currentLeafIndex + PageSize, _leafIndexes.Count - 1);
-                    if (index < _leafIndexes.Count)
-                    {
-                        index = _leafIndexes[index];
-                    }
-
-                    break;
+            if (nextLeafIndex >= 0 && nextLeafIndex < _leafIndexes.Count)
+            {
+                Index = _leafIndexes[nextLeafIndex];
             }
         }
         else
         {
-            index = keyInfo.Key switch
-            {
-                ConsoleKey.UpArrow or ConsoleKey.K => Index - 1,
-                ConsoleKey.DownArrow or ConsoleKey.J => Index + 1,
-                ConsoleKey.Home => 0,
-                ConsoleKey.End => ItemCount - 1,
-                ConsoleKey.PageUp => Index - PageSize,
-                ConsoleKey.PageDown => Index + PageSize,
-                _ => Index,
-            };
+            Index = Clamp(Index + delta);
         }
 
+        return Index != previous;
+    }
+
+    /// <summary>
+    /// Moves cursor by a page delta (PageSize steps), respecting Leaf mode.
+    /// </summary>
+    public bool MovePage(int pageDelta)
+    {
+        var previous = Index;
+
+        if (_leafIndexes != null)
+        {
+            var currentLeafIndex = _leafIndexes.IndexOf(Index);
+            var nextLeafIndex = Math.Clamp(currentLeafIndex + pageDelta, 0, _leafIndexes.Count - 1);
+            if (nextLeafIndex >= 0 && nextLeafIndex < _leafIndexes.Count)
+            {
+                Index = _leafIndexes[nextLeafIndex];
+            }
+        }
+        else
+        {
+            Index = Clamp(Index + pageDelta);
+        }
+
+        return Index != previous;
+    }
+
+    /// <summary>Moves cursor to the first selectable item.</summary>
+    public bool MoveFirst()
+    {
+        var previous = Index;
+        Index = _leafIndexes != null && _leafIndexes.Count > 0 ? _leafIndexes[0] : 0;
+        return Index != previous;
+    }
+
+    /// <summary>Moves cursor to the last selectable item.</summary>
+    public bool MoveLast()
+    {
+        var previous = Index;
+        Index = _leafIndexes != null && _leafIndexes.Count > 0
+            ? _leafIndexes[_leafIndexes.Count - 1]
+            : ItemCount - 1;
+        return Index != previous;
+    }
+
+    /// <summary>
+    /// Handles search text input when in searching mode.
+    /// Appends printable characters, handles Backspace/Ctrl+Backspace, and cancels on Escape.
+    /// Returns true if state changed.
+    /// </summary>
+    public bool HandleSearchInput(ConsoleKeyInfo keyInfo)
+    {
         var search = SearchText;
         var searching = Searching;
+        var index = Index;
 
-        if (SearchEnabled && Searching)
+        if (!char.IsControl(keyInfo.KeyChar))
         {
-            // If is text input, append to search filter
-            if (!char.IsControl(keyInfo.KeyChar))
+            search = SearchText + keyInfo.KeyChar;
+            index = FindSearchIndex(search, index);
+        }
+        else if (keyInfo.Key == ConsoleKey.Escape)
+        {
+            searching = false;
+            search = string.Empty;
+        }
+        else if (keyInfo.Key == ConsoleKey.Backspace)
+        {
+            if (search.Length > 0)
             {
-                search = SearchText + keyInfo.KeyChar;
-
-                var item = Items.FirstOrDefault(x =>
-                    _converter.Invoke(x.Data).Contains(search, StringComparison.OrdinalIgnoreCase)
-                    && (!x.IsGroup || Mode != SelectionMode.Leaf));
-
-                if (item != null)
-                {
-                    index = Items.IndexOf(item);
-                }
+                search = (keyInfo.Modifiers & ConsoleModifiers.Control) == ConsoleModifiers.Control
+                    ? string.Empty
+                    : search.Substring(0, search.Length - 1);
             }
-
-            if (keyInfo.Key == ConsoleKey.Escape)
-            {
-                searching = false;
-                search = string.Empty;
-            }
-            else if (keyInfo.Key == ConsoleKey.Backspace)
-            {
-                if (search.Length > 0)
-                {
-                    if ((keyInfo.Modifiers & ConsoleModifiers.Control) == ConsoleModifiers.Control)
-                    {
-                        search = string.Empty;
-                    }
-                    else
-                    {
-                        search = search.Substring(0, search.Length - 1);
-                    }
-                }
-
-                var item = Items.FirstOrDefault(x =>
-                    _converter.Invoke(x.Data).Contains(search, StringComparison.OrdinalIgnoreCase) &&
-                    (!x.IsGroup || Mode != SelectionMode.Leaf));
-
-                if (item != null)
-                {
-                    index = Items.IndexOf(item);
-                }
-            }
+            index = FindSearchIndex(search, index);
+        }
+        else
+        {
+            return false;
         }
 
-        index = WrapAround
-            ? (ItemCount + (index % ItemCount)) % ItemCount
-            : index.Clamp(0, ItemCount - 1);
+        index = Clamp(index);
 
         if (index != Index || SearchText != search || searching != Searching)
         {
@@ -202,5 +192,29 @@ internal class MenuPromptState<T>
         }
 
         return false;
+    }
+
+    private int FindSearchIndex(string search, int fallback)
+    {
+        for (var i = 0; i < Items.Count; i++)
+        {
+            var item = Items[i];
+            if (item.IsGroup && Mode == MenuSelectionMode.Leaf)
+            {
+                continue;
+            }
+            if (_converter.Invoke(item.Data).Contains(search, StringComparison.OrdinalIgnoreCase))
+            {
+                return i;
+            }
+        }
+        return fallback;
+    }
+
+    private int Clamp(int index)
+    {
+        return WrapAround
+            ? ItemCount == 0 ? 0 : ((index % ItemCount) + ItemCount) % ItemCount
+            : Math.Clamp(index, 0, Math.Max(0, ItemCount - 1));
     }
 }

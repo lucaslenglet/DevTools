@@ -23,12 +23,19 @@ var services = new ServiceCollection()
   .AddSingleton(TimeProvider.System)
   .AddSingleton(AnsiConsole.Console)
   // Menus
-  .AddSingleton<RepositoriesMenu>()
+  .AddSingleton<RepositoriesScreen>()
   .AddSingleton<RepositoryActionsMenu>()
   .BuildServiceProvider();
 
   // Run application
+var cancellationSource = new CancellationTokenSource();
+Console.CancelKeyPress += (s, e) =>
+{
+    e.Cancel = true;
+    cancellationSource.Cancel();
+};
+var console = services.GetRequiredService<IAnsiConsole>();
 await services
-  .GetRequiredService<RepositoriesMenu>()
-  .ShowAsync()
+  .GetRequiredService<RepositoriesScreen>()
+  .ShowAsync(console, true, cancellationSource.Token)
   .ConfigureAwait(false);

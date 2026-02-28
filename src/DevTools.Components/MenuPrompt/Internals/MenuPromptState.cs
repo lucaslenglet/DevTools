@@ -1,5 +1,3 @@
-using DevTools.Components.MenuPrompt;
-
 namespace DevTools.Components.MenuPrompt.Internals;
 
 internal class MenuPromptState<T>

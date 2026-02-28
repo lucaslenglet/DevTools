@@ -1,4 +1,3 @@
-using DevTools.Components.Screen;
 using Spectre.Console;
 
 namespace DevTools.Components.MenuPrompt;
@@ -56,16 +55,6 @@ public static class MenuPromptExtensions
         public MenuPrompt<T> EnableWrapArount()
         {
             menu.WrapAround = true;
-            return menu;
-        }
-
-        /// <summary>
-        /// Registers a key binding. The handler receives a <see cref="MenuKeyContext{T}"/> with the
-        /// current item, index, key info, and navigation/reset capabilities.
-        /// </summary>
-        public MenuPrompt<T> BindKey(ConsoleKey key, Func<MenuKeyContext<T>, ScreenInputResult> handler)
-        {
-            menu.BindKey(key, handler);
             return menu;
         }
 

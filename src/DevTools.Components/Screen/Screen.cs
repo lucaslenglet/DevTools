@@ -29,7 +29,7 @@ public abstract class Screen
 
                 while (!cancellationToken.IsCancellationRequested)
                 {
-                    var rawKey = await console.Input.ReadKeyAsync(true, cancellationToken).ConfigureAwait(false);
+                    var rawKey = await SafeReadKey(console, cancellationToken).ConfigureAwait(false);
                     if (rawKey == null)
                     {
                         continue;
@@ -46,7 +46,7 @@ public abstract class Screen
                             result = element.Component.HandleInput(console, key);
                         }
                     }
-                    
+
                     if (result == ScreenInputResult.Exit)
                     {
                         break;
@@ -63,13 +63,13 @@ public abstract class Screen
             console.Cursor.Show();
 
             await OnExit().ConfigureAwait(false);
-        } while (isMain);
+        } while (isMain && !cancellationToken.IsCancellationRequested);
     }
 
     protected abstract Task OnInit();
     protected abstract Task OnExit();
 
-    private IRenderable BuildRenderable(IAnsiConsole console)
+    private Rows BuildRenderable(IAnsiConsole console)
     {
         var list = new List<IRenderable>();
 
@@ -86,6 +86,18 @@ public abstract class Screen
         }
 
         return new Rows(list);
+    }
+
+    private static async Task<ConsoleKeyInfo?> SafeReadKey(IAnsiConsole console, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await console.Input.ReadKeyAsync(true, cancellationToken).ConfigureAwait(false);
+        }
+        catch (TaskCanceledException)
+        {
+            return null;
+        }
     }
 
     private abstract record ScreenElement;

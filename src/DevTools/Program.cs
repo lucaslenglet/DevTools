@@ -28,7 +28,14 @@ var services = new ServiceCollection()
   .BuildServiceProvider();
 
   // Run application
+var cancellationSource = new CancellationTokenSource();
+Console.CancelKeyPress += (s, e) =>
+{
+    e.Cancel = true;
+    cancellationSource.Cancel();
+};
+var console = services.GetRequiredService<IAnsiConsole>();
 await services
   .GetRequiredService<RepositoriesScreen>()
-  .ShowAsync(AnsiConsole.Console, true, CancellationToken.None)
+  .ShowAsync(console, true, cancellationSource.Token)
   .ConfigureAwait(false);

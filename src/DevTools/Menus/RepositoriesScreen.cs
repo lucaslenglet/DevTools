@@ -16,8 +16,7 @@ class RepositoriesScreen : Screen
     private readonly TimeProvider _timeProvider;
     private readonly RepositoryActionsMenu _actionsMenu;
 
-    private MenuPrompt<GitRepoInfo> menu;
-    private List<GitRepoInfo> repos;
+    private MenuPrompt<GitRepoInfo>? menu;
 
     public RepositoriesScreen(
         AppContext appContext,
@@ -69,7 +68,7 @@ class RepositoriesScreen : Screen
 
     protected override async Task OnExit()
     {
-        var submitContext = menu.SubmitContext;
+        var submitContext = menu!.SubmitContext;
 
         if (submitContext is null)
         {

@@ -5,10 +5,11 @@ namespace DevTools.Models;
 class Config
 {
     [YamlIgnore]
-    public static int CurrentVersion => 2;
+    public static int CurrentVersion => 1;
     public int Version { get; init; } = CurrentVersion;
     public List<string> RepoPaths { get; init; } = [];
     public HashSet<string> Favorites { get; init; } = [];
+    public Dictionary<string, string> DisplayNames { get; init; } = [];
     public ConfigCommand DefaultCommand { get; init; } = LazygitCommand;
 
     public List<ConfigCommand> CustomCommands { get; init; } = [
@@ -86,5 +87,16 @@ class Config
         {
             Favorites.Add(repoPath);
         }
+    }
+
+    public string? GetDisplayName(string repoPath) =>
+        DisplayNames.TryGetValue(repoPath, out var name) ? name : null;
+
+    public void SetDisplayName(string repoPath, string? displayName)
+    {
+        if (string.IsNullOrWhiteSpace(displayName))
+            DisplayNames.Remove(repoPath);
+        else
+            DisplayNames[repoPath] = displayName.Trim();
     }
 }

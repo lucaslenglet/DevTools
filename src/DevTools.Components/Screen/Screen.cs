@@ -70,14 +70,6 @@ public abstract class Screen
         await OnExit(cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task ShowRootAsync(CancellationToken cancellationToken)
-    {
-        do
-        {
-            await ShowAsync(cancellationToken);
-        } while (!cancellationToken.IsCancellationRequested);
-    }
-
     protected abstract Task OnInit(CancellationToken cancellationToken);
     protected abstract Task OnExit(CancellationToken cancellationToken);
 

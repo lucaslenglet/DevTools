@@ -31,26 +31,20 @@ var services = new ServiceCollection()
   .AddSingleton(AnsiConsole.Console)
   // Screens
   .AddTransient<RepositoriesScreen>()
-  .AddTransient<RepositoryActionsScreen>()
+  .AddTransient<RepositoryCommandsScreen>()
   .AddTransient<RepoPathsScreen>()
   .BuildServiceProvider();
 
 // Run application
-var console = services.GetRequiredService<IAnsiConsole>();
-
-while (!cancellationSource.Token.IsCancellationRequested)
+if (context.Config.RepoPaths.Count == 0)
 {
-  if (context.Config.RepoPaths.Count == 0)
-  {
-    await services
-      .GetRequiredService<RepoPathsScreen>()
-      .ShowSettingsAsync(cancellationSource.Token)
-      .ConfigureAwait(false);
-    continue;
-  }
-
   await services
-    .GetRequiredService<RepositoriesScreen>()
-    .ShowAsync(cancellationSource.Token)
+    .GetRequiredService<RepoPathsScreen>()
+    .ShowSettingsAsync(cancellationSource.Token)
     .ConfigureAwait(false);
 }
+
+await services
+  .GetRequiredService<RepositoriesScreen>()
+  .ShowForeverAsync(cancellationSource.Token)
+  .ConfigureAwait(false);

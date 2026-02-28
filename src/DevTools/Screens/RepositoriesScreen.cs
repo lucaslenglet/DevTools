@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using DevTools.Components.MenuPrompt;
 using DevTools.Components.Screen;
 using DevTools.Helpers;
@@ -25,11 +26,19 @@ class RepositoriesScreen(
 
     private MenuPrompt<GitRepoInfo>? menu;
 
+    public async Task ShowForeverAsync(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            await ShowAsync(cancellationToken).ConfigureAwait(false);
+        }
+    }
+    
     protected override Task OnInit(CancellationToken cancellationToken)
     {
         var now = _timeProvider.GetLocalNow().DateTime;
 
-        var hints = new Markup(string.Join("[dim] | [/]", Hints.Exit!, Hints.Paths!, Hints.ConfigPath(_appContext.ConfigFilePath)!));
+        var hints = new Markup(Hints.Join(Hints.Exit!, Hints.Rename!, Hints.Paths!, Hints.ConfigPath(_appContext.ConfigFilePath)!));
 
         AddElement(hints);
         AddElement(Text.Empty);
@@ -37,13 +46,14 @@ class RepositoriesScreen(
         menu = new MenuPrompt<GitRepoInfo>()
             .Title("Select a [green]repository[/] :")
             .UseChoiceProvider(FetchRepos)
-            .UseConverter(r => RepoDisplayFormatter.Format(r, now, _appContext.Config.IsFavorite(r.Directory.FullName)))
+            .UseConverter(r => RepoDisplayFormatter.Format(r, now, _appContext.Config))
             .HighlightStyle(Styles.Hightlight)
             .SearchHighlightStyle(Styles.SearchHightlight)
             .EnableSearch()
             .EnableWrapArount()
             .BindKey(ConsoleKey.Q, _ => ScreenInputResult.Exit)
             .BindKey(ConsoleKey.F2, _ => ScreenInputResult.Exit)
+            .BindKey(ConsoleKey.R, _ => ScreenInputResult.Exit)
             .BindKey(ConsoleKey.F, ctx =>
             {
                 _appContext.Config.ToggleFavorite(ctx.CurrentItem.Directory.FullName);
@@ -66,32 +76,51 @@ class RepositoriesScreen(
         {
             return;
         }
-
+        
         if (submitContext.KeyInfo.Key == ConsoleKey.F2)
         {
             await _serviceProvider.GetRequiredService<RepoPathsScreen>().ShowAsync(cancellationToken).ConfigureAwait(false);
-            return;
         }
-
-        if (submitContext.KeyInfo.Key == ConsoleKey.Enter)
+        else if (submitContext.KeyInfo.Key == ConsoleKey.R)
         {
             var repo = submitContext.CurrentItem;
+            var currentDisplayName = _appContext.Config.GetDisplayName(repo.Directory.FullName);
+            var prompt = "Enter [green]display name[/] :";
+
+            var inputScreen = new TextInputScreen(Console, prompt, currentDisplayName ?? repo.Directory.Name ?? "");
+            await inputScreen.ShowAsync(cancellationToken).ConfigureAwait(false);
+
+            if (inputScreen.Cancelled
+                || (currentDisplayName == null && string.IsNullOrWhiteSpace(inputScreen.Value))
+                || currentDisplayName?.Equals(inputScreen.Value, StringComparison.Ordinal) is true)
+            {
+                return;
+            }
+
+            _appContext.Config.SetDisplayName(repo.Directory.FullName, inputScreen.Value);
+            _configurationManager.Save();
+        }
+        else if (submitContext.KeyInfo.Key == ConsoleKey.Enter)
+        {
+            var repo = submitContext.CurrentItem;
+
+            var command = _appContext.Config.DefaultCommand;
 
             if (submitContext.KeyInfo.Modifiers.HasFlag(ConsoleModifiers.Control)
                 || submitContext.KeyInfo.Modifiers.HasFlag(ConsoleModifiers.Shift))
             {
-                await _serviceProvider.GetRequiredService<RepositoryActionsScreen>().ShowAsync(repo, cancellationToken).ConfigureAwait(false);
-                return;
+                var actionsScreen = _serviceProvider.GetRequiredService<RepositoryCommandsScreen>();
+                command = await actionsScreen.PromptAsync(repo, cancellationToken).ConfigureAwait(false);
             }
 
-            Console.Execute(
-                _appContext.Config.DefaultCommand.ProcessName,
-                StringHelper.FormatIfNotNull(_appContext.Config.DefaultCommand.WorkingDirectory, repo.Directory.FullName),
-                StringHelper.FormatIfNotNull(_appContext.Config.DefaultCommand.Arguments, repo.Directory.FullName));
-            return;
+            if (command is not null)
+            {
+                ExecuteCommand(command.ProcessName,
+                    StringHelper.FormatIfNotNull(command.WorkingDirectory, repo.Directory.FullName),
+                    StringHelper.FormatIfNotNull(command.Arguments, repo.Directory.FullName));
+            }
         }
-
-        if (submitContext.KeyInfo.Key == ConsoleKey.Q)
+        else if (submitContext.KeyInfo.Key == ConsoleKey.Q)
         {
             Console.ClearAndExit();
         }
@@ -103,5 +132,18 @@ class RepositoriesScreen(
             .OrderByDescending(r => _appContext.Config.Favorites.Contains(r.Directory.FullName))
             .ThenByDescending(r => r.LastActivity)
             .ToList();
+    }
+
+    private void ExecuteCommand(string fileName, string? workingDirectory, string? arguments)
+    {
+        Console.Clear();
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = fileName,
+            WorkingDirectory = workingDirectory,
+            Arguments = arguments,
+            UseShellExecute = false,
+        })?.WaitForExit();
+        Console.Clear();
     }
 }

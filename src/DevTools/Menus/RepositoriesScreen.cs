@@ -14,6 +14,7 @@ class RepositoriesScreen : Screen
     private readonly ConfigurationManager _configurationManager;
     private readonly IAnsiConsole _console;
     private readonly TimeProvider _timeProvider;
+    private readonly RepositoryActionsMenu _actionsMenu;
 
     private MenuPrompt<GitRepoInfo> menu;
     private List<GitRepoInfo> repos;
@@ -23,13 +24,15 @@ class RepositoriesScreen : Screen
         RepositoryScanner repositoryScanner,
         ConfigurationManager configurationManager,
         IAnsiConsole console,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        RepositoryActionsMenu actionsMenu)
     {
         _appContext = appContext;
         _repositoryScanner = repositoryScanner;
         _configurationManager = configurationManager;
         _console = console;
         _timeProvider = timeProvider;
+        _actionsMenu = actionsMenu;
     }
 
     protected override Task OnInit()
@@ -64,36 +67,36 @@ class RepositoriesScreen : Screen
         return Task.CompletedTask;
     }
 
-    protected override Task OnExit()
+    protected override async Task OnExit()
     {
         var submitContext = menu.SubmitContext;
 
         if (submitContext is null)
         {
-            return Task.CompletedTask;
+            return;
         }
 
         if (submitContext.KeyInfo.Key == ConsoleKey.Enter)
         {
+            var repo = submitContext.CurrentItem;
+
             if (submitContext.KeyInfo.Modifiers == ConsoleModifiers.None)
             {
-                // RepositoryActionsMenu.CommandToAction(appContext.Config.DefaultCommand).Action!(repo);
+                RepositoryActionsMenu.CommandToAction(_appContext.Config.DefaultCommand).Action!.Invoke(repo);
             }
             else if (submitContext.KeyInfo.Modifiers.HasFlag(ConsoleModifiers.Control)
                 || submitContext.KeyInfo.Modifiers.HasFlag(ConsoleModifiers.Shift))
             {
-                // await actionsMenu.ShowAsync(repo).ConfigureAwait(false);
+                await _actionsMenu.ShowAsync(repo).ConfigureAwait(false);
             }
 
-            return Task.CompletedTask;
+            return;
         }
 
         if (submitContext.KeyInfo.Key == ConsoleKey.Q)
         {
             _console.ClearAndExit();
         }
-
-        return Task.CompletedTask;
     }
 
     private List<GitRepoInfo> FetchRepos()

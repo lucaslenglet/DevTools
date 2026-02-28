@@ -1,69 +1,92 @@
 using System.Diagnostics;
-using DevTools.Components.Extensions;
 using DevTools.Components.MenuPrompt;
+using DevTools.Components.Screen;
 using DevTools.Models;
 using Spectre.Console;
 
 namespace DevTools.Menus;
 
-class RepositoryActionsMenu(IAnsiConsole console, AppContext context)
+class RepositoryActionsMenu(IAnsiConsole _console, AppContext _context) : Screen
 {
-    // public async Task ShowAsync(GitRepoInfo repo, CancellationToken cancellationToken = default)
-    // {
-    //     console.ClearAndDisplayHint(Hints.Exit!, Hints.Back!);
+    private GitRepoInfo? _repo;
+    private MenuPrompt<RepositoryAction> _menu = null!;
 
-    //     var selection = new MenuPrompt<RepositoryAction>()
-    //         .Title($"Select a [green]command[/] [dim]({repo.Directory.FullName})[/] :")
-    //         .UseConverter(o => $"[{o.ToMarkup()}]{o.Text,-20}[/]")
-    //         .AddChoices([
-    //             .. context.Config.CustomCommands.Select(CommandToAction),
-    //             new RepositoryAction("← Back", Decoration: Decoration.Dim.ToString())
-    //         ])
-    //         .HighlightStyle(Styles.Hightlight)
-    //         .SearchHighlightStyle(Styles.SearchHightlight)
-    //         .EnableWrapArount()
-    //         .AddSubmitKeys(ConsoleKey.Q!, ConsoleKey.Escape!)
-    //         ;
+    public Task ShowAsync(GitRepoInfo repo)
+    {
+        _repo = repo;
+        return base.ShowAsync(_console, false, CancellationToken.None);
+    }
 
-    //     var result = await selection.ShowAsync(console, cancellationToken)
-    //         .ConfigureAwait(false);
+    protected override Task OnInit()
+    {
+        var hints = new Markup(string.Join("[dim] | [/]", Hints.Exit!, Hints.Back!));
 
-    //     if (result.ConsoleKeyInfo.Key is ConsoleKey.Enter or ConsoleKey.Spacebar)
-    //     {
-    //         result.Data.Action?.Invoke(repo);
-    //     }
-    //     else if (result.ConsoleKeyInfo.Key is ConsoleKey.Q)
-    //     {
-    //         console.ClearAndExit();
-    //     }
-    // }
+        AddElement(hints);
+        AddElement(Text.Empty);
 
-    // public static RepositoryAction CommandToAction(ConfigCommand command)
-    //     => new(
-    //         command.Name,
-    //         (r) => ExecuteCommand(
-    //             command.ProcessName,
-    //             FormatIfNotNull(command.WorkingDirectory, r.Directory.FullName),
-    //             FormatIfNotNull(command.Arguments, r.Directory.FullName)),
-    //             command.Color,
-    //             Decoration: null
-    //         );
+        _menu = new MenuPrompt<RepositoryAction>()
+            .Title($"Select a [green]command[/] [dim]({_repo!.Directory.FullName})[/] :")
+            .UseConverter(o => $"[{o.ToMarkup()}]{o.Text,-20}[/]")
+            .AddChoices([
+                .. _context.Config.CustomCommands.Select(CommandToAction),
+                new RepositoryAction("← Back", Decoration: Decoration.Dim.ToString()),
+            ])
+            .HighlightStyle(Styles.Hightlight)
+            .SearchHighlightStyle(Styles.SearchHightlight)
+            .EnableWrapArount()
+            .BindKey(ConsoleKey.Q, _ => ScreenInputResult.Exit)
+            .BindKey(ConsoleKey.Escape, _ => ScreenInputResult.Exit);
 
-    // private static void ExecuteCommand(
-    //     string fileName, string? workingDirectory = null, string? arguments = null)
-    // {
-    //     Console.Clear();
-    //     var processInfo = new ProcessStartInfo
-    //     {
-    //         FileName = fileName,
-    //         WorkingDirectory = workingDirectory,
-    //         Arguments = arguments,
-    //         UseShellExecute = false
-    //     };
-    //     Process.Start(processInfo)?.WaitForExit();
-    //     Console.Clear();
-    // }
+        AddElement(_menu);
 
-    // private static string? FormatIfNotNull(string? pattern, string value)
-    //     => pattern is not null ? string.Format(pattern, value) : null;
+        return Task.CompletedTask;
+    }
+
+    protected override Task OnExit()
+    {
+        var ctx = _menu.SubmitContext;
+        if (ctx is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        if (ctx.KeyInfo.Key == ConsoleKey.Q)
+        {
+            _console.ClearAndExit();
+            return Task.CompletedTask;
+        }
+
+        // ESC or "← Back" (Action is null) → go back without doing anything
+        if (ctx.KeyInfo.Key == ConsoleKey.Escape || ctx.CurrentItem.Action is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        ctx.CurrentItem.Action.Invoke(_repo!);
+        return Task.CompletedTask;
+    }
+
+    internal static RepositoryAction CommandToAction(ConfigCommand cmd) => new(
+        cmd.Name,
+        r => ExecuteCommand(
+            cmd.ProcessName,
+            FormatIfNotNull(cmd.WorkingDirectory, r.Directory.FullName),
+            FormatIfNotNull(cmd.Arguments, r.Directory.FullName)),
+        cmd.Color);
+
+    private static void ExecuteCommand(string fileName, string? workingDirectory, string? arguments)
+    {
+        Console.Clear();
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = fileName,
+            WorkingDirectory = workingDirectory,
+            Arguments = arguments,
+            UseShellExecute = false,
+        })?.WaitForExit();
+        Console.Clear();
+    }
+
+    private static string? FormatIfNotNull(string? pattern, string value)
+        => pattern is not null ? string.Format(pattern, value) : null;
 }

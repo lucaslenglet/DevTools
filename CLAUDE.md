@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-**DevTools** is a terminal-based Git repository browser and launcher (command: `devtools`), published as a .NET global tool (`lucaslgt.DevTools`). It requires the `GIT_REPOS_PATH` environment variable pointing to the root of your Git repositories.
+**DevTools** is a terminal-based Git repository browser and launcher (command: `devtools`), published as a .NET global tool (`lucaslgt.DevTools`). Repository scan paths are configured in-app via `RepoPathsScreen` and persisted in `config.yml`.
 
 ## Commands
 
@@ -28,8 +28,16 @@ No test project exists — testing is done manually by running the app interacti
 
 The solution has two projects:
 
-- **`src/DevTools`** — Main application. Entry point is `Program.cs`, which initializes DI and starts the `RepositoriesScreen`.
+- **`src/DevTools`** — Main application. Entry point is `Program.cs`, which initializes DI and starts the appropriate screen.
 - **`src/DevTools.Components`** — Reusable UI library built on Spectre.Console. Uses `IgnoresAccessChecksToGenerator` to access internal Spectre.Console members. Do not add app-specific logic here.
+
+### Startup flow
+
+`Program.cs` calls `ConfigurationManager.InitializeAppContext()`, validates the config version matches `Config.CurrentVersion`, builds the DI container, then:
+- If `Config.RepoPaths` is empty, shows `RepoPathsScreen` so the user can add directories.
+- Otherwise, enters `RepositoriesScreen.ShowRootAsync` (loops indefinitely until Ctrl+C).
+
+Transient screens registered in DI: `RepositoriesScreen`, `RepositoryActionsScreen`, `RepoPathsScreen`.
 
 ### Screen system (`DevTools.Components`)
 
@@ -40,29 +48,42 @@ The solution has two projects:
 - `ShowRootAsync` loops indefinitely (used for the root screen only).
 
 `MenuPrompt<T>` implements `IScreenComponent` — it is the primary interactive widget. Key features:
-- `BindKey(ConsoleKey, handler)` — custom key handling returning `ScreenInputResult` (None / Refresh / Exit).
+- `BindKey(ConsoleKey, Func<MenuKeyContext<T>, ScreenInputResult>)` — custom key handling; returns `this` for chaining.
 - `UseChoiceProvider(Func<IEnumerable<T>>)` — lazily loaded items (called once on first render).
 - `AddChoices(IEnumerable<T>)` — statically provided items.
 - `UseConverter(Func<T, string>)` — Spectre markup string for display.
 - `SubmitContext` — set on exit; provides the selected item and the triggering key.
+- `MenuKeyContext<T>` — passed to key handlers; has `CurrentItem`, `CurrentIndex`, `TotalItems`, `KeyInfo`, `MoveTo(int)`, and `Reset()` (re-fetches choices).
 - Registered key bindings take priority over search input.
+- Fluent extensions live in `MenuPromptExtensions.cs`: `.Title()`, `.AddChoices()`, `.UseConverter()`, `.UseChoiceProvider()`, `.EnableSearch()`, `.EnableWrapAround()`, `.SetDefaultIndex()`, `.HighlightStyle()`, `.SearchHighlightStyle()`.
 
 To add a new screen: create a class inheriting `Screen`, inject dependencies via constructor, override `OnInit`/`OnExit`, and register it as `Transient` in `Program.cs`.
+
+### Screens
+
+| Screen | Purpose | Key bindings |
+|--------|---------|-------------|
+| `RepositoriesScreen` | Browse repos (root screen) | Q=exit, F2=paths config, F=favorite, Enter=default command, Ctrl+Enter/Shift+Enter=actions |
+| `RepositoryActionsScreen` | Run custom commands on a repo | Enter=execute, ESC=back |
+| `RepoPathsScreen` | Manage repo scan directories | A=add, D=delete, ESC/Q=exit |
+
+`RepoPathsScreen` uses a `ShowSettingsAsync(CancellationToken)` method (not the inherited `ShowAsync`), shows a `+ Add directory...` sentinel item, validates paths exist before adding, prevents duplicates, and persists via `configManager.Save()`.
 
 ### Configuration & persistence
 
 `ConfigurationManager` loads/saves `config.yml` from the platform app data folder (`%LOCALAPPDATA%/DevTools/config.yml` on Windows). The `Config` model holds:
+- `RepoPaths` — list of absolute directory paths to scan for Git repos.
 - `Favorites` — set of absolute repo paths.
 - `DefaultCommand` — the command run on plain Enter (defaults to lazygit).
 - `CustomCommands` — list of `ConfigCommand` entries shown in `RepositoryActionsScreen`.
 
 `ConfigCommand.WorkingDirectory` and `Arguments` support `{0}` as a placeholder for the selected repo's full path, formatted via `StringHelper.FormatIfNotNull`.
 
-`Config.CurrentVersion` is a static integer. If the loaded config's `Version` doesn't match, the app exits with an error — bump `CurrentVersion` whenever the config schema changes.
+`Config.CurrentVersion` is a static integer (currently `2`). If the loaded config's `Version` doesn't match, the app exits with an error — bump `CurrentVersion` whenever the config schema changes.
 
 ### Repository scanning
 
-`RepositoryScanner` scans `GIT_REPOS_PATH` up to two levels deep in parallel, using LibGit2Sharp to read branch, tracking status, and last activity time (derived from `.git/` file timestamps). Repos at depth 2 display their parent folder name as a prefix.
+`RepositoryScanner` scans all directories in `Config.RepoPaths` up to two levels deep in parallel, using LibGit2Sharp to read branch, tracking status, and last activity time (derived from `.git/` file timestamps). Repos at depth 2 display their parent folder name as a prefix. Results are ordered by last activity (most recent first).
 
 ### Branch colors & display
 

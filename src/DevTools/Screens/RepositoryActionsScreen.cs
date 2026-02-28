@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using DevTools.Components.MenuPrompt;
 using DevTools.Components.Screen;
 using DevTools.Helpers;
@@ -10,6 +9,15 @@ namespace DevTools.Screens;
 class RepositoryActionsScreen(IAnsiConsole console, AppContext appContext) : Screen(console)
 {
     private readonly AppContext _appContext = appContext;
+
+    private record RepositoryAction(
+        string Text,
+        Action<GitRepoInfo>? Action = null,
+        string? Color = null,
+        string? Decoration = null)
+    {
+        public string ToMarkup() => $"{Decoration} {Color ?? Spectre.Console.Color.White.ToMarkup()}".Trim();
+    }
 
     private GitRepoInfo? repo;
     private MenuPrompt<RepositoryAction>? menu;
@@ -72,13 +80,4 @@ class RepositoryActionsScreen(IAnsiConsole console, AppContext appContext) : Scr
             StringHelper.FormatIfNotNull(cmd.WorkingDirectory, r.Directory.FullName),
             StringHelper.FormatIfNotNull(cmd.Arguments, r.Directory.FullName)),
         cmd.Color);
-
-    private record RepositoryAction(
-        string Text,
-        Action<GitRepoInfo>? Action = null,
-        string? Color = null,
-        string? Decoration = null)
-    {
-        public string ToMarkup() => $"{Decoration} {Color ?? Spectre.Console.Color.White.ToMarkup()}".Trim();
-    }
 }

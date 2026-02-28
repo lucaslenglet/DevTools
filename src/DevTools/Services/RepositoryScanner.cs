@@ -11,14 +11,15 @@ class RepositoryScanner(AppContext context)
 
     public List<GitRepoInfo> Scan()
     {
-        var gitDirectories = FindGitDirectories(context.GitReposPath);
-
         var repos = new ConcurrentBag<GitRepoInfo>();
-        Parallel.ForEach(gitDirectories, item =>
+
+        foreach (var rootPath in context.Config.RepoPaths)
         {
-            var info = GetGitRepoInfo(item.dir, item.parentFolder);
-            repos.Add(info);
-        });
+            Parallel.ForEach(FindGitDirectories(rootPath), item =>
+            {
+                repos.Add(GetGitRepoInfo(item.dir, item.parentFolder));
+            });
+        }
 
         return repos.OrderByDescending(x => x.LastActivity).ToList();
     }

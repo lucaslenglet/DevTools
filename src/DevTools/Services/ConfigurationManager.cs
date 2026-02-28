@@ -1,17 +1,14 @@
 using DevTools.Helpers;
 using DevTools.Models;
-using Spectre.Console;
 
 namespace DevTools.Services;
 
 class ConfigurationManager(AppContext context)
 {
-    private const string ExitPrompt = "[dim]Press any key to quit...[/]";
-    private const string EnvGitReposPath = "GIT_REPOS_PATH";
     private const string Folder = "DevTools";
     private const string FileName = "config.yml";
 
-    public static AppContext? InitializeAppContext()
+    public static AppContext InitializeAppContext()
     {
         var configFilePath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -19,30 +16,10 @@ class ConfigurationManager(AppContext context)
             FileName
         );
 
-        var gitReposPath = Environment.GetEnvironmentVariable(EnvGitReposPath);
-
-        if (string.IsNullOrWhiteSpace(gitReposPath))
-        {
-            AnsiConsole.MarkupLine($"[red]The environment variable {EnvGitReposPath} is not defined.[/]");
-            AnsiConsole.MarkupLine("[yellow]Please define this variable with the path to your Git repositories.[/]");
-            AnsiConsole.MarkupLine(ExitPrompt);
-            Console.ReadKey(true);
-            return null;
-        }
-
-        if (!Directory.Exists(gitReposPath))
-        {
-            AnsiConsole.MarkupLine($"[red]The directory '{gitReposPath}' does not exist.[/]");
-            AnsiConsole.MarkupLine(ExitPrompt);
-            Console.ReadKey(true);
-            return null;
-        }
-
         var config = Load(configFilePath);
 
         return new AppContext
         {
-            GitReposPath = gitReposPath,
             ConfigFilePath = configFilePath,
             Config = config
         };
@@ -68,13 +45,13 @@ class ConfigurationManager(AppContext context)
         }
 
         var yml = File.ReadAllText(filePath);
-        var prefs = SerdeHelper.Deserialize<Config>(yml);
+        var config = SerdeHelper.Deserialize<Config>(yml);
 
-        if (prefs is null)
+        if (config is null)
         {
             throw new Exception("User preference failed to load.");
         }
 
-        return prefs;
+        return config;
     }
 }

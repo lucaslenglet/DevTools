@@ -5,8 +5,9 @@ namespace DevTools.Models;
 class Config
 {
     [YamlIgnore]
-    public static int CurrentVersion => 1;
+    public static int CurrentVersion => 2;
     public int Version { get; init; } = CurrentVersion;
+    public List<string> RepoPaths { get; init; } = [];
     public HashSet<string> Favorites { get; init; } = [];
     public ConfigCommand DefaultCommand { get; init; } = LazygitCommand;
 

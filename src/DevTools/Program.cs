@@ -6,10 +6,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Spectre.Console;
 
 var context = ConfigurationManager.InitializeAppContext();
-if (context == null) return;
 if (context.Config.Version != Config.CurrentVersion)
 {
-  AnsiConsole.Markup($"[red]Config version doesn't match tool version. ({context.Config.Version} != {Config.CurrentVersion})[/]");
+  AnsiConsole.MarkupLineInterpolated($"[red]Config version doesn't match tool version. ({context.Config.Version} != {Config.CurrentVersion})[/]");
+  AnsiConsole.MarkupLineInterpolated($"[dim]{context.ConfigFilePath}[/]");
   return;
 }
 
@@ -19,8 +19,8 @@ AnsiConsole.Console.Profile.Encoding = Encoding.UTF8;
 var cancellationSource = new CancellationTokenSource();
 Console.CancelKeyPress += (s, e) =>
 {
-    e.Cancel = true;
-    cancellationSource.Cancel();
+  e.Cancel = true;
+  cancellationSource.Cancel();
 };
 
 var services = new ServiceCollection()
@@ -29,14 +29,28 @@ var services = new ServiceCollection()
   .AddSingleton<RepositoryScanner>()
   .AddSingleton(TimeProvider.System)
   .AddSingleton(AnsiConsole.Console)
-  // Menus
+  // Screens
   .AddTransient<RepositoriesScreen>()
   .AddTransient<RepositoryActionsScreen>()
+  .AddTransient<RepoPathsScreen>()
   .BuildServiceProvider();
 
 // Run application
 var console = services.GetRequiredService<IAnsiConsole>();
-await services
-  .GetRequiredService<RepositoriesScreen>()
-  .ShowRootAsync(cancellationSource.Token)
-  .ConfigureAwait(false);
+
+while (!cancellationSource.Token.IsCancellationRequested)
+{
+  if (context.Config.RepoPaths.Count == 0)
+  {
+    await services
+      .GetRequiredService<RepoPathsScreen>()
+      .ShowSettingsAsync(cancellationSource.Token)
+      .ConfigureAwait(false);
+    continue;
+  }
+
+  await services
+    .GetRequiredService<RepositoriesScreen>()
+    .ShowAsync(cancellationSource.Token)
+    .ConfigureAwait(false);
+}

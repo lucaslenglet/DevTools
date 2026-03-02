@@ -84,10 +84,11 @@ class RepositoriesScreen(
         else if (submitContext.KeyInfo.Key == ConsoleKey.R)
         {
             var repo = submitContext.CurrentItem;
+            var originalName = repo.Directory.Name;
             var currentDisplayName = _appContext.Config.GetDisplayName(repo.Directory.FullName);
-            var prompt = "Enter [green]display name[/] :";
+            var prompt = $"Enter [green]display name[/] for [blue]{originalName.EscapeMarkup()}[/] :";
 
-            var inputScreen = new TextInputScreen(Console, prompt, currentDisplayName ?? repo.Directory.Name ?? "");
+            var inputScreen = new TextInputScreen(Console, prompt, currentDisplayName ?? originalName);
             await inputScreen.ShowAsync(cancellationToken).ConfigureAwait(false);
 
             if (inputScreen.Cancelled

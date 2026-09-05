@@ -42,9 +42,10 @@ cargo build --release
 | `config.rs` | `config.yml` model, load/save, `{0}` path placeholder |
 | `scan.rs` | Repository discovery (2 levels deep, rayon) and git info via `gix` |
 | `format.rs` | Repository row rendering: name, age, ahead/behind, branch colors |
-| `menu.rs` | List cursor + incremental search shared by every screen |
+| `menu.rs` | List cursor and incremental-search state |
+| `list.rs` | Shared list-screen chrome: layout, hints, search, cursor keys |
 | `text_input.rs` | Single-line prompt (add path, rename) |
-| `screens.rs` | The three screens and their key handling |
+| `screens.rs` | The three screens, their key handling and the browser state |
 | `tui.rs` | Terminal setup, key reading, running child processes |
 | `theme.rs` | Spectre color-name compatibility and shared styles |
 
@@ -57,10 +58,18 @@ sends them.
 ## Scanning cost
 
 Reading git metadata dominates the runtime, and it is far slower over WSL mounts (`/mnt/c`)
-or network shares. The app therefore scans only when the result can have changed: at
-startup, after a command ran, and after the scan directories were edited. Toggling a
-favorite re-sorts the list in place, and renaming only relabels a row. Rendered rows are
-cached between keystrokes and rebuilt when the displayed ages go stale.
+or network shares. Four things keep it down:
+
+- The app scans only when the result can have changed: at startup, after a command ran, and
+  after the scan directories were edited. Toggling a favorite re-sorts the list in place,
+  and renaming only relabels a row.
+- Last activity comes from `.git/logs/HEAD` (the reflog, touched by every commit, checkout,
+  merge, pull and reset) plus four fixed files — one stat each, instead of walking every
+  file under `refs/heads`.
+- Repositories are opened with `gix::open::Options::isolated()`, which skips re-reading the
+  system and user git config for every repository.
+- Directory discovery and git reads both run on rayon, and rendered rows are cached between
+  keystrokes, rebuilt when the search text changes or the displayed ages go stale.
 
 ## Windows toolchain note
 

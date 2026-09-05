@@ -1,5 +1,6 @@
 mod config;
 mod format;
+mod list;
 mod menu;
 mod scan;
 mod screens;
@@ -36,11 +37,6 @@ fn run(tui: &mut tui::Tui, ctx: &mut AppContext) -> Result<()> {
         }
     }
 
-    match screens::repositories(tui, ctx)? {
-        Flow::Quit | Flow::Continue => Ok(()),
-    }
+    screens::repositories(tui, ctx)?;
+    Ok(())
 }
-
-#[cfg(test)]
-#[path = "scan_tests.rs"]
-mod scan_tests;

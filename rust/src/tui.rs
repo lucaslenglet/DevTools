@@ -3,11 +3,11 @@ use crossterm::event::{
     self, Event, KeyEvent, KeyEventKind, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
     PushKeyboardEnhancementFlags,
 };
-use crossterm::terminal::supports_keyboard_enhancement;
 use crossterm::terminal::{
-    disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
+    disable_raw_mode, enable_raw_mode, supports_keyboard_enhancement, EnterAlternateScreen,
+    LeaveAlternateScreen,
 };
-use crossterm::{execute, ExecutableCommand};
+use crossterm::{cursor, execute};
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 use std::io::{self, Stdout};
@@ -16,48 +16,31 @@ use std::process::Command;
 
 pub struct Tui {
     pub terminal: Terminal<CrosstermBackend<Stdout>>,
-    /// True once the terminal accepted the keyboard enhancement flags, which is what
-    /// makes `Ctrl+Enter` and `Shift+Enter` distinguishable from a plain `Enter`.
+    /// Whether the terminal accepted the keyboard enhancement flags, which is what makes
+    /// `Ctrl+Enter` and `Shift+Enter` distinguishable from a plain `Enter`. Queried once:
+    /// the answer cannot change while the process runs, and the query is a blocking
+    /// round-trip to the terminal.
     enhanced_keys: bool,
-}
-
-/// Asks for disambiguated key codes. Most Unix terminals report `Shift+Enter` as a plain
-/// `Enter` without this; terminals that don't support it are left untouched.
-fn push_keyboard_enhancement() -> bool {
-    if !matches!(supports_keyboard_enhancement(), Ok(true)) {
-        return false;
-    }
-
-    execute!(
-        io::stdout(),
-        PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
-    )
-    .is_ok()
 }
 
 impl Tui {
     pub fn new() -> Result<Self> {
         enable_raw_mode()?;
-        let mut stdout = io::stdout();
-        execute!(stdout, EnterAlternateScreen, crossterm::cursor::Hide)?;
-        let enhanced_keys = push_keyboard_enhancement();
-        let terminal = Terminal::new(CrosstermBackend::new(stdout))?;
-        Ok(Self {
-            terminal,
+        let enhanced_keys = matches!(supports_keyboard_enhancement(), Ok(true));
+        let mut tui = Self {
+            terminal: Terminal::new(CrosstermBackend::new(io::stdout()))?,
             enhanced_keys,
-        })
+        };
+        tui.enter()?;
+        Ok(tui)
     }
 
     pub fn restore(&mut self) -> Result<()> {
         if self.enhanced_keys {
-            let _ = execute!(io::stdout(), PopKeyboardEnhancementFlags);
+            execute!(io::stdout(), PopKeyboardEnhancementFlags)?;
         }
         disable_raw_mode()?;
-        execute!(
-            self.terminal.backend_mut(),
-            LeaveAlternateScreen,
-            crossterm::cursor::Show
-        )?;
+        execute!(io::stdout(), LeaveAlternateScreen, cursor::Show)?;
         Ok(())
     }
 
@@ -71,21 +54,15 @@ impl Tui {
         self.restore()?;
 
         let mut command = Command::new(program);
-        if let Some(dir) = working_directory.as_deref() {
-            if Path::new(dir).is_dir() {
-                command.current_dir(dir);
-            }
+        if let Some(directory) = working_directory.filter(|dir| Path::new(dir).is_dir()) {
+            command.current_dir(directory);
         }
-        for argument in split_arguments(arguments.as_deref().unwrap_or_default()) {
-            command.arg(argument);
-        }
+        command.args(split_arguments(arguments.as_deref().unwrap_or_default()));
 
         let status = command.status();
 
         enable_raw_mode()?;
-        io::stdout().execute(EnterAlternateScreen)?;
-        io::stdout().execute(crossterm::cursor::Hide)?;
-        self.enhanced_keys = push_keyboard_enhancement();
+        self.enter()?;
         self.terminal.clear()?;
 
         if let Err(error) = status {
@@ -93,6 +70,17 @@ impl Tui {
             eprintln!("Failed to start '{program}': {error}");
         }
 
+        Ok(())
+    }
+
+    fn enter(&mut self) -> Result<()> {
+        execute!(io::stdout(), EnterAlternateScreen, cursor::Hide)?;
+        if self.enhanced_keys {
+            execute!(
+                io::stdout(),
+                PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
+            )?;
+        }
         Ok(())
     }
 }

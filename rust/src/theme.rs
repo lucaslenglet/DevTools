@@ -7,6 +7,11 @@ pub fn dim() -> Style {
     Style::new().add_modifier(Modifier::DIM)
 }
 
+/// Foreground style for a Spectre color name — see [`parse_color`].
+pub fn fg(name: &str) -> Style {
+    Style::new().fg(parse_color(name))
+}
+
 /// Resolves a Spectre.Console color name (as stored in `config.yml`), `#rrggbb`, or a
 /// 256-color index. Unknown values fall back to white so a bad config never panics.
 pub fn parse_color(name: &str) -> Color {

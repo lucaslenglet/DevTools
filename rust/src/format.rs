@@ -3,7 +3,7 @@ use crate::scan::RepoInfo;
 use crate::theme;
 use chrono::{DateTime, Local};
 use ratatui::style::{Color, Style};
-use ratatui::text::Span;
+use ratatui::text::{Line, Span};
 use std::time::SystemTime;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
@@ -23,10 +23,9 @@ impl Segment {
 }
 
 pub fn repo_segments(repo: &RepoInfo, now: DateTime<Local>, config: &Config) -> Vec<Segment> {
-    let path = repo.path.to_string_lossy().into_owned();
-    let custom_display_name = config.display_name(&path);
+    let custom_display_name = config.display_name(&repo.path);
 
-    let favorite_icon = if config.is_favorite(&path) {
+    let favorite_icon = if config.is_favorite(&repo.path) {
         "\u{1F525} "
     } else {
         "   "
@@ -178,32 +177,27 @@ fn pad(text: &str, width: usize) -> String {
     format!("{text}{}", " ".repeat(width.saturating_sub(count(text))))
 }
 
-/// Splits segments so every case-insensitive occurrence of `needle` gets the search style.
-pub fn highlight(segments: &[Segment], needle: &str, style: Style) -> Vec<Span<'static>> {
+/// Renders a row, giving every case-insensitive occurrence of `needle` the search style.
+pub fn highlight(segments: &[Segment], needle: &str, style: Style) -> Line<'static> {
+    let plain = |segment: &Segment| Span::styled(segment.text.clone(), segment.style);
+
     if needle.is_empty() {
-        return segments
-            .iter()
-            .map(|s| Span::styled(s.text.clone(), s.style))
-            .collect();
+        return Line::from(segments.iter().map(plain).collect::<Vec<_>>());
     }
 
-    let needle_lower = needle.to_lowercase();
+    let needle = needle.to_lowercase();
     let mut spans = Vec::new();
 
     for segment in segments {
-        // Lowercasing can change byte lengths, so only ASCII needles are byte-index safe.
-        if !needle_lower.is_ascii() || !segment.text.is_ascii() {
-            spans.push(Span::styled(segment.text.clone(), segment.style));
+        // Lowercasing can change byte lengths, so only ASCII text is byte-index safe.
+        if !needle.is_ascii() || !segment.text.is_ascii() {
+            spans.push(plain(segment));
             continue;
         }
 
-        let haystack = segment.text.to_lowercase();
-        let mut cursor = 0usize;
-
-        while let Some(offset) = haystack[cursor..].find(&needle_lower) {
-            let start = cursor + offset;
-            let end = start + needle_lower.len();
-
+        let mut cursor = 0;
+        for (start, matched) in segment.text.to_lowercase().match_indices(&needle) {
+            let end = start + matched.len();
             if start > cursor {
                 spans.push(Span::styled(
                     segment.text[cursor..start].to_string(),
@@ -222,7 +216,7 @@ pub fn highlight(segments: &[Segment], needle: &str, style: Style) -> Vec<Span<'
         }
     }
 
-    spans
+    Line::from(spans)
 }
 
 /// Plain text of a row, used as the search key.

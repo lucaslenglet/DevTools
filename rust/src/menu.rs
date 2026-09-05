@@ -100,15 +100,15 @@ impl MenuState {
         }
     }
 
-    pub fn render(&mut self, frame: &mut Frame, area: Rect, rows: Vec<Vec<Span<'static>>>) {
+    pub fn render(&mut self, frame: &mut Frame, area: Rect, rows: &[Line<'static>]) {
         let items: Vec<ListItem> = rows
-            .into_iter()
+            .iter()
             .enumerate()
-            .map(|(index, spans)| {
+            .map(|(index, row)| {
                 let marker = if index == self.index { "> " } else { "  " };
-                let mut line = vec![Span::raw(marker)];
-                line.extend(spans);
-                ListItem::new(Line::from(line))
+                let mut line = Line::from(vec![Span::raw(marker)]);
+                line.spans.extend(row.spans.iter().cloned());
+                ListItem::new(line)
             })
             .collect();
 

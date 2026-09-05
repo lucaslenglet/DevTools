@@ -20,21 +20,28 @@ pub struct ConfigCommand {
     pub color: Option<String>,
 }
 
+/// The repository path, substituted into `working_directory` and `arguments`.
+const REPO_PLACEHOLDER: &str = "{0}";
+
 impl ConfigCommand {
-    fn new(
-        process_name: &str,
-        name: &str,
-        color: &str,
-        working_directory: Option<&str>,
-        arguments: Option<&str>,
-    ) -> Self {
+    fn new(process_name: &str, name: &str, color: &str) -> Self {
         Self {
             process_name: process_name.to_string(),
             name: Some(name.to_string()),
-            working_directory: working_directory.map(str::to_string),
-            arguments: arguments.map(str::to_string),
             color: Some(color.to_string()),
+            ..Self::default()
         }
+    }
+
+    /// Runs the command inside the selected repository.
+    fn in_repo(mut self) -> Self {
+        self.working_directory = Some(REPO_PLACEHOLDER.to_string());
+        self
+    }
+
+    fn with_args(mut self, arguments: &str) -> Self {
+        self.arguments = Some(arguments.to_string());
+        self
     }
 
     /// Falls back to the process name, mirroring the C# `Name` getter.
@@ -46,7 +53,7 @@ impl ConfigCommand {
     }
 
     fn lazygit() -> Self {
-        Self::new("lazygit", "Lazygit", "hotpink", Some("{0}"), None)
+        Self::new("lazygit", "Lazygit", "hotpink").in_repo()
     }
 }
 
@@ -79,30 +86,26 @@ impl Default for Config {
 fn default_commands() -> Vec<ConfigCommand> {
     let (editor, shell, file_manager) = if cfg!(windows) {
         (
-            ConfigCommand::new(
-                "pwsh",
-                "VS Code",
-                "lightsteelblue",
-                None,
-                Some(r#"-Command "code {0}""#),
-            ),
-            ConfigCommand::new("pwsh", "Powershell", "blue", Some("{0}"), None),
-            ConfigCommand::new("explorer.exe", "File Explorer", "green", None, Some("{0}")),
+            ConfigCommand::new("pwsh", "VS Code", "lightsteelblue")
+                .with_args(r#"-Command "code {0}""#),
+            ConfigCommand::new("pwsh", "Powershell", "blue").in_repo(),
+            ConfigCommand::new("explorer.exe", "File Explorer", "green")
+                .with_args(REPO_PLACEHOLDER),
         )
     } else {
         (
-            ConfigCommand::new("code", "VS Code", "lightsteelblue", None, Some("{0}")),
-            ConfigCommand::new(&default_shell(), "Shell", "blue", Some("{0}"), None),
-            ConfigCommand::new("xdg-open", "File Manager", "green", None, Some("{0}")),
+            ConfigCommand::new("code", "VS Code", "lightsteelblue").with_args(REPO_PLACEHOLDER),
+            ConfigCommand::new(&default_shell(), "Shell", "blue").in_repo(),
+            ConfigCommand::new("xdg-open", "File Manager", "green").with_args(REPO_PLACEHOLDER),
         )
     };
 
     vec![
         editor,
-        ConfigCommand::new("claude", "Claude Code", "darkorange", Some("{0}"), None),
-        ConfigCommand::new("copilot", "Copilot", "silver", Some("{0}"), None),
-        ConfigCommand::new("codex", "Codex", "grey63", Some("{0}"), None),
-        ConfigCommand::new("vibe", "Vibe", "orange1", Some("{0}"), None),
+        ConfigCommand::new("claude", "Claude Code", "darkorange").in_repo(),
+        ConfigCommand::new("copilot", "Copilot", "silver").in_repo(),
+        ConfigCommand::new("codex", "Codex", "grey63").in_repo(),
+        ConfigCommand::new("vibe", "Vibe", "orange1").in_repo(),
         shell,
         ConfigCommand::lazygit(),
         file_manager,
@@ -175,8 +178,8 @@ impl AppContext {
 fn config_file_path() -> Result<PathBuf> {
     if cfg!(windows) {
         // Same location as the .NET version: %LOCALAPPDATA%/DevTools/config.yml.
-        let local_app_data =
-            dirs::data_local_dir().context("could not resolve the local application data folder")?;
+        let local_app_data = dirs::data_local_dir()
+            .context("could not resolve the local application data folder")?;
         return Ok(local_app_data.join("DevTools").join("config.yml"));
     }
 
@@ -209,9 +212,10 @@ pub fn resolve_path(path: &str) -> PathBuf {
     }
 }
 
-/// Replaces the `{0}` placeholder with the repository path, mirroring `StringHelper.FormatIfNotNull`.
-pub fn format_if_some(pattern: Option<&String>, value: &str) -> Option<String> {
-    pattern.map(|p| p.replace("{0}", value))
+/// Substitutes the repository path into a `working_directory` or `arguments` pattern,
+/// mirroring the .NET version's `StringHelper.FormatIfNotNull`.
+pub fn expand_repo_path(pattern: Option<&String>, repo_path: &str) -> Option<String> {
+    pattern.map(|pattern| pattern.replace(REPO_PLACEHOLDER, repo_path))
 }
 
 #[cfg(test)]
@@ -236,12 +240,18 @@ mod tests {
     fn reads_a_config_written_by_the_dotnet_version() {
         let yml = concat!(
             "version: 1\n",
-            r"repoPaths:", "\n",
-            r"- C:\Dev", "\n",
-            r"favorites:", "\n",
-            r"- C:\Dev\DevTools", "\n",
-            r"displayNames:", "\n",
-            r"  C:\Dev\DevTools: tools", "\n",
+            r"repoPaths:",
+            "\n",
+            r"- C:\Dev",
+            "\n",
+            r"favorites:",
+            "\n",
+            r"- C:\Dev\DevTools",
+            "\n",
+            r"displayNames:",
+            "\n",
+            r"  C:\Dev\DevTools: tools",
+            "\n",
             "defaultCommand:\n",
             "  processName: lazygit\n",
             "  workingDirectory: '{0}'\n",
@@ -274,13 +284,13 @@ mod tests {
     }
 
     #[test]
-    fn formats_the_path_placeholder() {
+    fn expands_the_repository_path_placeholder() {
         let pattern = Some(r#"-Command "code {0}""#.to_string());
         assert_eq!(
-            format_if_some(pattern.as_ref(), REPO),
+            expand_repo_path(pattern.as_ref(), REPO),
             Some(r#"-Command "code C:\Dev\DevTools""#.to_string())
         );
-        assert_eq!(format_if_some(None, r"C:\Dev"), None);
+        assert_eq!(expand_repo_path(None, r"C:\Dev"), None);
     }
 
     #[test]

@@ -1,10 +1,9 @@
 use super::*;
 use crate::config::Config;
-use std::path::PathBuf;
 
 fn repo(name: &str, parent_folder: Option<&str>) -> RepoInfo {
     RepoInfo {
-        path: PathBuf::from(format!(r"C:\Dev\{name}")),
+        path: format!(r"C:\Dev\{name}"),
         name: name.to_string(),
         parent_folder: parent_folder.map(str::to_string),
         last_activity: None,
@@ -42,7 +41,7 @@ fn a_renamed_repository_keeps_the_columns_aligned() {
     let repo = repo("DevTools", None);
     let plain = row(&repo, &config);
 
-    config.set_display_name(&repo.path.to_string_lossy(), Some("tools"));
+    config.set_display_name(&repo.path, Some("tools"));
     let renamed = row(&repo, &config);
 
     assert_eq!(count(&plain), count(&renamed));
@@ -78,7 +77,7 @@ fn a_favorite_keeps_the_columns_aligned() {
     let repo = repo("DevTools", None);
     let plain = row(&repo, &config);
 
-    config.toggle_favorite(&repo.path.to_string_lossy());
+    config.toggle_favorite(&repo.path);
     let favorite = row(&repo, &config);
 
     assert_eq!(count(&plain), count(&favorite));

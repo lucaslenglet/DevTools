@@ -1,4 +1,4 @@
-use crate::config::{format_if_some, AppContext, ConfigCommand};
+use crate::config::{format_if_some, AppContext, Config, ConfigCommand};
 use crate::format::{self, Segment};
 use crate::menu::MenuState;
 use crate::scan::{self, RepoInfo};
@@ -6,7 +6,7 @@ use crate::text_input;
 use crate::theme;
 use crate::tui::{self, Tui};
 use anyhow::Result;
-use chrono::Local;
+use chrono::{DateTime, Local};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::Style;
@@ -25,20 +25,19 @@ const ADD_PATH_SENTINEL: &str = "+ Add directory";
 
 /// Repository browser — the root screen.
 pub fn repositories(tui: &mut Tui, ctx: &mut AppContext) -> Result<Flow> {
-    let mut repos = fetch_repos(ctx);
-    let mut menu = MenuState::new(repos.len(), true);
+    let mut menu = MenuState::new(0, true);
+    let mut repos = rescan(tui, ctx, &mut menu)?;
+    let mut view = RepoView::build(&repos, &ctx.config);
 
     loop {
-        let now = Local::now();
-        let rows: Vec<Vec<Segment>> = repos
-            .iter()
-            .map(|repo| format::repo_segments(repo, now, &ctx.config))
-            .collect();
-        let keys: Vec<String> = rows.iter().map(|r| format::plain_text(r)).collect();
+        if view.is_stale() {
+            view = RepoView::build(&repos, &ctx.config);
+        }
 
         let hints = Line::from(join_hints(&[
             "Press Q to exit",
             "R to rename",
+            "TAB for commands",
             "F2 configure paths",
             &format!("Config path ({})", ctx.config_file_path.display()),
         ]));
@@ -48,10 +47,7 @@ pub fn repositories(tui: &mut Tui, ctx: &mut AppContext) -> Result<Flow> {
             Span::raw(" :"),
         ]);
 
-        let spans: Vec<Vec<Span<'static>>> = rows
-            .into_iter()
-            .map(|segments| format::highlight(segments, &menu.search, theme::SEARCH_HIGHLIGHT))
-            .collect();
+        let spans = view.spans(&menu.search);
 
         let mut page_size = 0usize;
         tui.terminal.draw(|frame| {
@@ -62,44 +58,29 @@ pub fn repositories(tui: &mut Tui, ctx: &mut AppContext) -> Result<Flow> {
             continue;
         };
 
-        if handle_search_key(&key, &mut menu, &keys) {
+        if handle_search_key(&key, &mut menu, &view.keys) {
             continue;
         }
 
+        // Many terminals (Windows Terminal on WSL among them) cannot report Ctrl/Shift+Enter
+        // as anything but a plain Enter, and some send Ctrl+J or Ctrl+M instead. TAB is the
+        // binding that works everywhere.
+        let control = key.modifiers.contains(KeyModifiers::CONTROL);
+        let opens_command_list = key.code == KeyCode::Tab
+            || (key.code == KeyCode::Enter
+                && key
+                    .modifiers
+                    .intersects(KeyModifiers::CONTROL | KeyModifiers::SHIFT))
+            || (control && matches!(key.code, KeyCode::Char('j') | KeyCode::Char('m')));
+        let runs_a_command = opens_command_list || key.code == KeyCode::Enter;
+
         match key.code {
-            KeyCode::Char('q') | KeyCode::Char('Q') => return Ok(Flow::Quit),
-            KeyCode::F(2) => {
-                if let Flow::Quit = repo_paths(tui, ctx)? {
-                    return Ok(Flow::Quit);
-                }
-                repos = fetch_repos(ctx);
-                menu.set_len(repos.len());
-            }
-            KeyCode::Char('f') | KeyCode::Char('F') => {
-                if let Some(repo) = repos.get(menu.index) {
-                    let path = repo.path.to_string_lossy().into_owned();
-                    ctx.config.toggle_favorite(&path);
-                    ctx.save()?;
-                    repos = fetch_repos(ctx);
-                    menu.set_len(repos.len());
-                }
-            }
-            KeyCode::Char('r') | KeyCode::Char('R') => {
-                if let Some(repo) = repos.get(menu.index) {
-                    rename_repo(tui, ctx, repo)?;
-                    repos = fetch_repos(ctx);
-                    menu.set_len(repos.len());
-                }
-            }
-            KeyCode::Enter => {
+            _ if runs_a_command => {
                 let Some(repo) = repos.get(menu.index).cloned() else {
                     continue;
                 };
 
-                let command = if key
-                    .modifiers
-                    .intersects(KeyModifiers::CONTROL | KeyModifiers::SHIFT)
-                {
+                let command = if opens_command_list {
                     match commands(tui, ctx, &repo)? {
                         (Flow::Quit, _) => return Ok(Flow::Quit),
                         (Flow::Continue, command) => command,
@@ -115,8 +96,43 @@ pub fn repositories(tui: &mut Tui, ctx: &mut AppContext) -> Result<Flow> {
                         format_if_some(command.working_directory.as_ref(), &path),
                         format_if_some(command.arguments.as_ref(), &path),
                     )?;
-                    repos = fetch_repos(ctx);
-                    menu.set_len(repos.len());
+                    // The command may well have changed the repository, so refresh here.
+                    repos = rescan(tui, ctx, &mut menu)?;
+                    select_path(&repos, &mut menu, &path);
+                    view = RepoView::build(&repos, &ctx.config);
+                }
+            }
+            KeyCode::Char('q') | KeyCode::Char('Q') => return Ok(Flow::Quit),
+            KeyCode::F(2) => {
+                let paths_before = ctx.config.repo_paths.clone();
+
+                if let Flow::Quit = repo_paths(tui, ctx)? {
+                    return Ok(Flow::Quit);
+                }
+
+                // Scanning is by far the slowest thing the app does, so only redo it when
+                // the directories actually changed.
+                if ctx.config.repo_paths != paths_before {
+                    repos = rescan(tui, ctx, &mut menu)?;
+                    view = RepoView::build(&repos, &ctx.config);
+                }
+            }
+            KeyCode::Char('f') | KeyCode::Char('F') => {
+                if let Some(repo) = repos.get(menu.index) {
+                    let path = repo.path.to_string_lossy().into_owned();
+                    ctx.config.toggle_favorite(&path);
+                    ctx.save()?;
+                    // Favorites only affect the order, so re-sort instead of rescanning.
+                    sort_repos(&mut repos, &ctx.config);
+                    select_path(&repos, &mut menu, &path);
+                    view = RepoView::build(&repos, &ctx.config);
+                }
+            }
+            KeyCode::Char('r') | KeyCode::Char('R') => {
+                if let Some(repo) = repos.get(menu.index).cloned() {
+                    // A display name changes the label only — no rescan, no reordering.
+                    rename_repo(tui, ctx, &repo)?;
+                    view = RepoView::build(&repos, &ctx.config);
                 }
             }
             _ => handle_navigation_key(&key, &mut menu, page_size),
@@ -262,7 +278,7 @@ fn add_path(tui: &mut Tui, ctx: &mut AppContext) -> Result<()> {
 
     let path = path.trim().to_string();
     if path.is_empty()
-        || !std::path::Path::new(&path).is_dir()
+        || !crate::config::resolve_path(&path).is_dir()
         || ctx.config.repo_paths.contains(&path)
     {
         return Ok(());
@@ -309,16 +325,88 @@ fn rename_repo(tui: &mut Tui, ctx: &mut AppContext, repo: &RepoInfo) -> Result<(
     Ok(())
 }
 
-fn fetch_repos(ctx: &AppContext) -> Vec<RepoInfo> {
+/// The rendered repository rows. Formatting every row costs a timezone lookup per row, so
+/// the result is kept until the data changes or the displayed ages go stale.
+struct RepoView {
+    rows: Vec<Vec<Segment>>,
+    keys: Vec<String>,
+    built_at: DateTime<Local>,
+}
+
+impl RepoView {
+    fn build(repos: &[RepoInfo], config: &Config) -> Self {
+        let built_at = Local::now();
+        let rows: Vec<Vec<Segment>> = repos
+            .iter()
+            .map(|repo| format::repo_segments(repo, built_at, config))
+            .collect();
+        let keys = rows.iter().map(|row| format::plain_text(row)).collect();
+
+        Self {
+            rows,
+            keys,
+            built_at,
+        }
+    }
+
+    /// Ages are shown to the minute, so anything fresher than that renders identically.
+    fn is_stale(&self) -> bool {
+        Local::now()
+            .signed_duration_since(self.built_at)
+            .num_minutes()
+            >= 1
+    }
+
+    fn spans(&self, search: &str) -> Vec<Vec<Span<'static>>> {
+        self.rows
+            .iter()
+            .map(|row| format::highlight(row, search, theme::SEARCH_HIGHLIGHT))
+            .collect()
+    }
+}
+
+/// Scans the configured directories, showing a notice first: on a network or WSL-mounted
+/// filesystem this takes long enough that a frozen screen would look like a hang.
+fn rescan(tui: &mut Tui, ctx: &AppContext, menu: &mut MenuState) -> Result<Vec<RepoInfo>> {
+    tui.terminal.draw(|frame| {
+        let [_, _, notice] = Layout::vertical([
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Min(1),
+        ])
+        .areas(frame.area());
+
+        frame.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                "Scanning repositories\u{2026}",
+                theme::dim(),
+            ))),
+            notice,
+        );
+    })?;
+
     let mut repos = scan::scan(&ctx.config);
+    sort_repos(&mut repos, &ctx.config);
+    menu.set_len(repos.len());
+    Ok(repos)
+}
+
+/// Favorites first, then most recent activity.
+fn sort_repos(repos: &mut [RepoInfo], config: &Config) {
     repos.sort_by(|a, b| {
-        let a_favorite = ctx.config.is_favorite(&a.path.to_string_lossy());
-        let b_favorite = ctx.config.is_favorite(&b.path.to_string_lossy());
+        let a_favorite = config.is_favorite(&a.path.to_string_lossy());
+        let b_favorite = config.is_favorite(&b.path.to_string_lossy());
         b_favorite
             .cmp(&a_favorite)
             .then(b.last_activity.cmp(&a.last_activity))
     });
-    repos
+}
+
+/// Keeps the cursor on the same repository after the list is reordered or rebuilt.
+fn select_path(repos: &[RepoInfo], menu: &mut MenuState, path: &str) {
+    if let Some(index) = repos.iter().position(|repo| repo.path.as_os_str() == path) {
+        menu.index = index;
+    }
 }
 
 /// Draws hints, title, list and search footer. Returns the list height (used as page size).

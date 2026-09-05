@@ -1,4 +1,4 @@
-use crate::config::Config;
+use crate::config::{self, Config};
 use rayon::prelude::*;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -23,7 +23,7 @@ pub fn scan(config: &Config) -> Vec<RepoInfo> {
     let candidates: Vec<(PathBuf, Option<String>)> = config
         .repo_paths
         .iter()
-        .flat_map(|root| find_git_directories(Path::new(root)))
+        .flat_map(|root| find_git_directories(&config::resolve_path(root)))
         .collect();
 
     let mut repos: Vec<RepoInfo> = candidates

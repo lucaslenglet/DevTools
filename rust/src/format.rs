@@ -179,11 +179,11 @@ fn pad(text: &str, width: usize) -> String {
 }
 
 /// Splits segments so every case-insensitive occurrence of `needle` gets the search style.
-pub fn highlight(segments: Vec<Segment>, needle: &str, style: Style) -> Vec<Span<'static>> {
+pub fn highlight(segments: &[Segment], needle: &str, style: Style) -> Vec<Span<'static>> {
     if needle.is_empty() {
         return segments
-            .into_iter()
-            .map(|s| Span::styled(s.text, s.style))
+            .iter()
+            .map(|s| Span::styled(s.text.clone(), s.style))
             .collect();
     }
 
@@ -193,7 +193,7 @@ pub fn highlight(segments: Vec<Segment>, needle: &str, style: Style) -> Vec<Span
     for segment in segments {
         // Lowercasing can change byte lengths, so only ASCII needles are byte-index safe.
         if !needle_lower.is_ascii() || !segment.text.is_ascii() {
-            spans.push(Span::styled(segment.text, segment.style));
+            spans.push(Span::styled(segment.text.clone(), segment.style));
             continue;
         }
 

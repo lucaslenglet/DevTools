@@ -1,5 +1,9 @@
 use anyhow::Result;
-use crossterm::event::{self, Event, KeyEvent, KeyEventKind};
+use crossterm::event::{
+    self, Event, KeyEvent, KeyEventKind, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
+    PushKeyboardEnhancementFlags,
+};
+use crossterm::terminal::supports_keyboard_enhancement;
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
@@ -12,6 +16,23 @@ use std::process::Command;
 
 pub struct Tui {
     pub terminal: Terminal<CrosstermBackend<Stdout>>,
+    /// True once the terminal accepted the keyboard enhancement flags, which is what
+    /// makes `Ctrl+Enter` and `Shift+Enter` distinguishable from a plain `Enter`.
+    enhanced_keys: bool,
+}
+
+/// Asks for disambiguated key codes. Most Unix terminals report `Shift+Enter` as a plain
+/// `Enter` without this; terminals that don't support it are left untouched.
+fn push_keyboard_enhancement() -> bool {
+    if !matches!(supports_keyboard_enhancement(), Ok(true)) {
+        return false;
+    }
+
+    execute!(
+        io::stdout(),
+        PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
+    )
+    .is_ok()
 }
 
 impl Tui {
@@ -19,11 +40,18 @@ impl Tui {
         enable_raw_mode()?;
         let mut stdout = io::stdout();
         execute!(stdout, EnterAlternateScreen, crossterm::cursor::Hide)?;
+        let enhanced_keys = push_keyboard_enhancement();
         let terminal = Terminal::new(CrosstermBackend::new(stdout))?;
-        Ok(Self { terminal })
+        Ok(Self {
+            terminal,
+            enhanced_keys,
+        })
     }
 
     pub fn restore(&mut self) -> Result<()> {
+        if self.enhanced_keys {
+            let _ = execute!(io::stdout(), PopKeyboardEnhancementFlags);
+        }
         disable_raw_mode()?;
         execute!(
             self.terminal.backend_mut(),
@@ -57,6 +85,7 @@ impl Tui {
         enable_raw_mode()?;
         io::stdout().execute(EnterAlternateScreen)?;
         io::stdout().execute(crossterm::cursor::Hide)?;
+        self.enhanced_keys = push_keyboard_enhancement();
         self.terminal.clear()?;
 
         if let Err(error) = status {

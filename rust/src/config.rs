@@ -69,24 +69,51 @@ impl Default for Config {
             favorites: BTreeSet::new(),
             display_names: BTreeMap::new(),
             default_command: ConfigCommand::lazygit(),
-            custom_commands: vec![
-                ConfigCommand::new(
-                    "pwsh",
-                    "VS Code",
-                    "lightsteelblue",
-                    None,
-                    Some("-Command \"code {0}\""),
-                ),
-                ConfigCommand::new("claude", "Claude Code", "darkorange", Some("{0}"), None),
-                ConfigCommand::new("copilot", "Copilot", "silver", Some("{0}"), None),
-                ConfigCommand::new("codex", "Codex", "grey63", Some("{0}"), None),
-                ConfigCommand::new("vibe", "Vibe", "orange1", Some("{0}"), None),
-                ConfigCommand::new("pwsh", "Powershell", "blue", Some("{0}"), None),
-                ConfigCommand::lazygit(),
-                ConfigCommand::new("explorer.exe", "File Explorer", "green", None, Some("{0}")),
-            ],
+            custom_commands: default_commands(),
         }
     }
+}
+
+/// Commands written to a brand new `config.yml`. Only the editor, the shell and the file
+/// manager differ per platform; everything else is a cross-platform CLI.
+fn default_commands() -> Vec<ConfigCommand> {
+    let (editor, shell, file_manager) = if cfg!(windows) {
+        (
+            ConfigCommand::new(
+                "pwsh",
+                "VS Code",
+                "lightsteelblue",
+                None,
+                Some(r#"-Command "code {0}""#),
+            ),
+            ConfigCommand::new("pwsh", "Powershell", "blue", Some("{0}"), None),
+            ConfigCommand::new("explorer.exe", "File Explorer", "green", None, Some("{0}")),
+        )
+    } else {
+        (
+            ConfigCommand::new("code", "VS Code", "lightsteelblue", None, Some("{0}")),
+            ConfigCommand::new(&default_shell(), "Shell", "blue", Some("{0}"), None),
+            ConfigCommand::new("xdg-open", "File Manager", "green", None, Some("{0}")),
+        )
+    };
+
+    vec![
+        editor,
+        ConfigCommand::new("claude", "Claude Code", "darkorange", Some("{0}"), None),
+        ConfigCommand::new("copilot", "Copilot", "silver", Some("{0}"), None),
+        ConfigCommand::new("codex", "Codex", "grey63", Some("{0}"), None),
+        ConfigCommand::new("vibe", "Vibe", "orange1", Some("{0}"), None),
+        shell,
+        ConfigCommand::lazygit(),
+        file_manager,
+    ]
+}
+
+fn default_shell() -> String {
+    std::env::var("SHELL")
+        .ok()
+        .filter(|shell| !shell.is_empty())
+        .unwrap_or_else(|| "bash".to_string())
 }
 
 impl Config {
@@ -146,9 +173,16 @@ impl AppContext {
 }
 
 fn config_file_path() -> Result<PathBuf> {
-    let local_app_data =
-        dirs::data_local_dir().context("could not resolve the local application data folder")?;
-    Ok(local_app_data.join("DevTools").join("config.yml"))
+    if cfg!(windows) {
+        // Same location as the .NET version: %LOCALAPPDATA%/DevTools/config.yml.
+        let local_app_data =
+            dirs::data_local_dir().context("could not resolve the local application data folder")?;
+        return Ok(local_app_data.join("DevTools").join("config.yml"));
+    }
+
+    // Elsewhere, follow the XDG base directory spec: ~/.config/devtools/config.yml.
+    let config_dir = dirs::config_dir().context("could not resolve the config folder")?;
+    Ok(config_dir.join("devtools").join("config.yml"))
 }
 
 fn load(path: &Path) -> Result<Config> {
@@ -160,6 +194,19 @@ fn load(path: &Path) -> Result<Config> {
     let config =
         serde_yaml_ng::from_str(&yml).with_context(|| format!("parsing {}", path.display()))?;
     Ok(config)
+}
+
+/// Expands a leading `~` so shell-style home paths work where users expect them.
+pub fn resolve_path(path: &str) -> PathBuf {
+    let Some(rest) = path.strip_prefix('~') else {
+        return PathBuf::from(path);
+    };
+
+    let is_home = rest.is_empty() || rest.starts_with('/') || rest.starts_with('\\');
+    match dirs::home_dir() {
+        Some(home) if is_home => home.join(rest.trim_start_matches(['/', '\\'])),
+        _ => PathBuf::from(path),
+    }
 }
 
 /// Replaces the `{0}` placeholder with the repository path, mirroring `StringHelper.FormatIfNotNull`.
@@ -234,5 +281,37 @@ mod tests {
             Some(r#"-Command "code C:\Dev\DevTools""#.to_string())
         );
         assert_eq!(format_if_some(None, r"C:\Dev"), None);
+    }
+
+    #[test]
+    fn expands_a_leading_tilde_to_the_home_directory() {
+        let home = dirs::home_dir().unwrap();
+
+        assert_eq!(resolve_path("~"), home);
+        assert_eq!(resolve_path("~/dev"), home.join("dev"));
+        // Only a path separator counts, so a user named directory stays untouched.
+        assert_eq!(resolve_path("~backup"), PathBuf::from("~backup"));
+        assert_eq!(resolve_path("/srv/dev"), PathBuf::from("/srv/dev"));
+    }
+
+    #[test]
+    fn default_commands_suit_the_host_platform() {
+        let commands = default_commands();
+        let has = |process_name: &str| {
+            commands
+                .iter()
+                .any(|command| command.process_name == process_name)
+        };
+
+        assert!(has("lazygit"));
+
+        if cfg!(windows) {
+            assert!(has("explorer.exe"));
+        } else {
+            assert!(has("xdg-open"));
+            assert!(commands
+                .iter()
+                .all(|command| !command.process_name.ends_with(".exe")));
+        }
     }
 }

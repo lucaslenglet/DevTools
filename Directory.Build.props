@@ -1,9 +1,9 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <ItemGroup>
-    <PackageReference Include="Nerdbank.GitVersioning" Condition="!Exists('packages.config')">
-      <PrivateAssets>all</PrivateAssets>
-      <Version>3.9.50</Version>
-    </PackageReference>
-  </ItemGroup>
+<Project>
+
+  <PropertyGroup>
+    <!-- Single source of the package version. The release workflow overrides it from the tag
+         (v1.2.3 -> 1.2.3); local and CI builds keep this placeholder. -->
+    <DevToolsVersion Condition="'$(DevToolsVersion)' == ''">0.0.0-local</DevToolsVersion>
+  </PropertyGroup>
+
 </Project>

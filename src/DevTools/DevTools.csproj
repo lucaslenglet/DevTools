@@ -8,19 +8,29 @@
     <PackAsTool>true</PackAsTool>
     <UserSecretsId>repos-9b02cdce62537005d5fb051653849e687c1a9eddabfc3c11253a62ac85339bc6</UserSecretsId>
     <PackageId>lucaslgt.DevTools</PackageId>
-    <Authors>LENGLET Lucas</Authors>
+    <Version>$(DevToolsVersion)</Version>
+    <Authors>Lucas Lenglet</Authors>
     <Description>Terminal-based Git repository browser and launcher with favorites and lazygit integration.</Description>
     <PackageTags>git,cli,repository,tool,lazygit</PackageTags>
     <PackageProjectUrl>https://github.com/lucaslenglet/DevTools</PackageProjectUrl>
     <RepositoryUrl>https://github.com/lucaslenglet/DevTools</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <ToolCommandName>devtools</ToolCommandName>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseExpression>MIT-0</PackageLicenseExpression>
+    <!-- The release workflow points ReleaseNotesFile (as an environment variable, which MSBuild
+         reads as a property) at the CHANGELOG.md section of the version being published. -->
+    <PackageReleaseNotes Condition="'$(ReleaseNotesFile)' != '' And Exists('$(ReleaseNotesFile)')">$([System.IO.File]::ReadAllText('$(ReleaseNotesFile)'))</PackageReleaseNotes>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="LibGit2Sharp" Version="0.31.0" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.1" />
     <PackageReference Include="YamlDotNet" Version="16.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
   <ItemGroup>

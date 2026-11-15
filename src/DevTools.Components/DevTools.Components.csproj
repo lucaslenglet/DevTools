@@ -7,11 +7,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="IgnoresAccessChecksToGenerator" Version="0.8.0">
+    <PackageReference Include="IgnoresAccessChecksToGenerator" Version="1.0.0">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="Spectre.Console" Version="0.54.0" />
+    <PackageReference Include="Spectre.Console" Version="0.57.2" />
   </ItemGroup>
 
   <ItemGroup>

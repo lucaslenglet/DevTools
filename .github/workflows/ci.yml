@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore DevTools.slnx
+
+      - name: Build
+        run: dotnet build DevTools.slnx --no-restore -c Release
+
+      # There is no test project: packing at least proves the tool manifest and the
+      # package metadata are valid, which is what a release would push.
+      - name: Pack
+        run: dotnet pack src/DevTools/DevTools.csproj --no-build -c Release -o artifacts

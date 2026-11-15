@@ -18,7 +18,7 @@ dotnet build DevTools.slnx
 # Restore dependencies
 dotnet restore DevTools.slnx
 
-# Pack the NuGet tool (CI uses Cake for this)
+# Pack the NuGet tool, as CI does
 dotnet pack src/DevTools/DevTools.csproj -c Release
 ```
 
@@ -97,6 +97,16 @@ Branch color logic lives in `RepoDisplayFormatter.GetBranchColor` and maps branc
 
 ## Versioning & CI
 
-Versioning uses [Nerdbank.GitVersioning](https://github.com/dotnet/Nerdbank.GitVersioning) (`version.json`). Builds are driven by a Cake script (`cake.cs`):
-- `Build` target — used in the PR build workflow.
-- `PackAndPush` target — used in the manual publish workflow; requires `NUGET_API_KEY` and `NUGET_SOURCE_URL` secrets.
+- `.github/workflows/ci.yml` builds and packs on every push to `main` and every PR.
+- Pushing a `v*` tag runs `.github/workflows/release.yml`: the tag is the only source of the
+  published version (`v1.2.3` -> `1.2.3`, passed as `DevToolsVersion`; local builds are
+  `0.0.0-local`, see `Directory.Build.props`).
+- Release notes come from `CHANGELOG.md` (Keep a Changelog). Before tagging, rename
+  `## [Unreleased]` to `## [1.2.3] - YYYY-MM-DD` and update the compare links at the bottom. The
+  workflow extracts that section, fails before building if it is missing or empty, exposes it as the
+  `ReleaseNotesFile` environment variable (read by the `.csproj` into `PackageReleaseNotes`), and
+  creates the GitHub release with the same text after the NuGet push, hence `contents: write`.
+- Publishing uses nuget.org trusted publishing (OIDC), not a stored API key: the job needs
+  `id-token: write`, and `NuGet/login@v1` must stay immediately before the push (one OIDC token buys
+  one API key valid for an hour). The only repository secret is `NUGET_USER`. The policy on nuget.org
+  names the owner, the repository and the workflow file name alone, `release.yml`.

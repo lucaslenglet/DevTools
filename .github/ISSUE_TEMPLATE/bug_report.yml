@@ -1,0 +1,25 @@
+name: Bug report
+description: Something does not work as documented.
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Tool version
+      description: Output of `dotnet tool list --global`, line `lucaslgt.devtools`.
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS and terminal
+      placeholder: "Windows 11, PowerShell 7 in Windows Terminal"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you got. Include the relevant part of your `config.yml` if it matters.
+    validations:
+      required: true

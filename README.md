@@ -1,7 +1,11 @@
+# DevTools
 
-# Git Repos Manager
+[![NuGet](https://img.shields.io/nuget/v/lucaslgt.DevTools?logo=nuget)](https://www.nuget.org/packages/lucaslgt.DevTools)
+[![Downloads](https://img.shields.io/nuget/dt/lucaslgt.DevTools)](https://www.nuget.org/packages/lucaslgt.DevTools)
+[![CI](https://github.com/lucaslenglet/DevTools/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/lucaslenglet/DevTools/actions/workflows/ci.yml)
+[![License: MIT-0](https://img.shields.io/github/license/lucaslenglet/DevTools)](https://github.com/lucaslenglet/DevTools/blob/main/LICENSE)
 
-**Git Repos Manager** is a terminal-based tool for quickly browsing, launching, and managing all your Git repositories from a single, interactive interface.
+**DevTools** is a terminal-based tool for quickly browsing, launching, and managing all your Git repositories from a single, interactive interface.
 
 ## Features
 
@@ -16,9 +20,6 @@
 - **Parallel Scanning**: Repository discovery is fast, even with hundreds of repos, thanks to parallel processing.
 - **Cross-Platform**: Works on Windows, macOS, and Linux.
 
-## Getting Started
-
-
 ## Prerequisites
 
 - [.NET 10 SDK or later](https://dotnet.microsoft.com/download)
@@ -26,14 +27,13 @@
 ## Installation
 
 1. Install dotnet tool: `dotnet tool install --global lucaslgt.DevTools`
-2. Set the `GIT_REPOS_PATH` environment variable to your repositories root folder
-3. (Recommended for correct Unicode/emoji display in Windows PowerShell) Add the following line to your PowerShell $PROFILE:
+2. (Recommended for correct Unicode/emoji display in Windows PowerShell) Add the following line to your PowerShell $PROFILE:
 
   ```powershell
   [console]::InputEncoding = [console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
   ```
   This ensures proper display of Unicode and emoji characters in the terminal UI.  
-3. Run the command: `devtools`
+3. Run the command: `devtools`. On first run, add the folders to scan (see [Configuration](#configuration)).
 
 ## Usage
 
@@ -41,16 +41,19 @@
 2. Search/filter: Start typing to filter the list by name.
 3. Select a repository: Use arrow keys and press Enter to open in lazygit. Press **Ctrl+Enter** or **Shift+Enter** to open a menu and select a program (e.g., terminal, explorer, Copilot CLI) to use on the repository.
 4. Manage favorites: Press `F` to toggle favorite status for any repository.
-5. Settings: Optionally skip the main menu on startup.
+5. Rename: Press `R` to give a repository a display name.
+6. Scan paths: Press `F2` to add (`A`) or remove (`D`) the folders scanned for repositories.
 
 ### Keyboard Shortcuts
 
 - **↑/↓**: Navigate repositories
 - **Enter**: Open selected repository in lazygit
+- **Ctrl+Enter** or **Shift+Enter**: Open the program selection menu for the selected repository
 - **F**: Toggle favorite
+- **R**: Rename (display name only, the folder is untouched)
+- **F2**: Configure scan paths (**A** to add, **D** to remove)
 - **Esc**: Go back
 - **Q** or **Ctrl+C**: Exit
-- **Ctrl+Enter** or **Shift+Enter**: Open the program selection menu for the selected repository
 
 ### Repository List Indicators
 
@@ -70,17 +73,30 @@
   - Cyan — `release/*`
   - White — Other branches
 
-## Data Storage
+## Configuration
 
-Favorites and settings are stored in platform-specific app data folders as JSON. No changes are made to your repositories.
+Everything lives in a single `config.yml`, under the local application data folder
+(`%LOCALAPPDATA%\DevTools\config.yml` on Windows, `~/.local/share/DevTools/config.yml` on Linux).
+The exact path is shown at the top of the main screen. It holds the scan paths, favorites, display
+names, the command run on **Enter** (`DefaultCommand`, lazygit by default) and the programs offered
+in the selection menu (`CustomCommands`). In a command, `{0}` is replaced by the repository path.
+
+No changes are made to your repositories.
 
 ## Troubleshooting
 
-- **Missing GIT_REPOS_PATH**: Set the environment variable to your repo root.
+- **Config version mismatch at startup**: the `config.yml` was written by another version of the tool; move it aside and let the tool create a new one.
 - **lazygit not found**: Install lazygit and ensure it's in your PATH.
-- **No repositories found**: Make sure your repos have a `.git` folder and are within the specified path.
+- **No repositories found**: Make sure your repos have a `.git` folder and are within one of the scan paths (**F2**).
 
 ## Acknowledgments
 
 - Built with [Spectre.Console](https://spectreconsole.net/)
 - Git operations powered by [LibGit2Sharp](https://github.com/libgit2/libgit2sharp)
+
+## License
+
+[MIT-0](https://github.com/lucaslenglet/DevTools/blob/main/LICENSE): use it however you like, no attribution required.
+
+This project does not accept contributions; see [CONTRIBUTING.md](https://github.com/lucaslenglet/DevTools/blob/main/CONTRIBUTING.md).
+Changes are listed in [CHANGELOG.md](https://github.com/lucaslenglet/DevTools/blob/main/CHANGELOG.md).
